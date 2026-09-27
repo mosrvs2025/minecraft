@@ -38,7 +38,7 @@ export class Controls {
         lastSpace = now;
       }
       if (e.code === 'KeyF' && !e.repeat) this.cb.onFlyToggle();
-      if (['KeyH', 'KeyN', 'KeyX'].includes(e.code) && !e.repeat) this.cb.onKey?.(e.code);
+      if (['KeyH', 'KeyN', 'KeyX', 'KeyE', 'KeyQ', 'KeyV', 'KeyJ'].includes(e.code) && !e.repeat) this.cb.onKey?.(e.code);
       if ((e.code === 'KeyT' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); this.cb.onChat(); return; }
       if (/^Digit[1-9]$/.test(e.code)) this.cb.onSelect(Number(e.code.slice(5)) - 1, false);
       this.keys.add(e.code);

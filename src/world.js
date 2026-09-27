@@ -1,5 +1,6 @@
 import { createNoise, hash3 } from './noise.js';
 import { B, BLOCKS, CS, CH, SEA } from './blocks.js';
+import { stampLandmarks, sitesNear } from './landmarks.js';
 
 export const chunkKey = (cx, cz) => cx + ',' + cz;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -56,7 +57,7 @@ export class World {
     return out;
   }
 
-  column(x, z) {
+  column(x, z, raw = false) {
     const n = this.noise;
     const cont = n.fbm2(x * 0.0022, z * 0.0022, 4);
     const temp = n.s2(x * 0.0011 + 100, z * 0.0011 - 50);
@@ -72,6 +73,13 @@ export class World {
     else if (temp > 0.25 && moist < 0.05) biome = 'desert';
     else if (moist > 0.12) biome = 'forest';
     else biome = 'plains';
+    // Glowcap Groves: always around a boss site, and (rarer, more often far from spawn) wherever the spore noise peaks
+    if (!raw && h > SEA && biome !== 'snow' && biome !== 'desert') {
+      const far = Math.hypot(x, z);
+      let grove = far > 180 && n.s2(x * 0.004 + 900, z * 0.004 - 400) > (far > 700 ? 0.45 : 0.62);
+      if (!grove) for (const st of sitesNear(this, 'boss', x, z, 100)) if (Math.hypot(st.x - x, st.z - z) < 70 + n.s2(x * 0.03, z * 0.03) * 10) grove = true;
+      if (grove) biome = 'grove';
+    }
     return { h, biome };
   }
 
@@ -90,7 +98,7 @@ export class World {
       const { h, biome } = col(lx, lz);
       const under = h < SEA;
       const top = under ? (h < SEA - 4 ? B.DIRT : B.SAND)
-        : biome === 'beach' || biome === 'desert' ? B.SAND : biome === 'snow' ? B.SNOW : B.GRASS;
+        : biome === 'beach' || biome === 'desert' ? B.SAND : biome === 'snow' ? B.SNOW : biome === 'grove' ? B.MYCEL : B.GRASS;
       const sub = top === B.SAND ? B.SAND : biome === 'snow' ? B.STONE : B.DIRT;
       for (let y = 0; y <= Math.max(h, SEA); y++) {
         let id = B.AIR;
@@ -115,12 +123,31 @@ export class World {
       }
       if (h > maxY) maxY = h;
       // ground cover
-      if (top === B.GRASS && d[lx + lz * CS + h * S2] === B.GRASS) {
+      if ((top === B.GRASS || top === B.MYCEL) && d[lx + lz * CS + h * S2] === top) {
         const r = hash3(x, 7, z) , dens = biome === 'forest' ? 0.22 : 0.3;
         if (r < dens) d[lx + lz * CS + (h + 1) * S2] = r < 0.012 ? B.FLOWER : B.TALLGRASS;
       }
       // floating ? blocks
       if (h > SEA && h + 4 < CH && top !== B.SNOW && hash3(x, 23, z) < 0.003) { d[lx + lz * CS + (h + 4) * S2] = B.QBLOCK; maxY = Math.max(maxY, h + 4); }
+    }
+
+    // giant mushrooms in groves
+    for (let lz = -3; lz < CS + 3; lz++) for (let lx = -3; lx < CS + 3; lx++) {
+      const { h, biome } = col(lx, lz);
+      if (biome !== 'grove') continue;
+      const x = ox + lx, z = oz + lz;
+      if (hash3(x, 29, z) > 0.015) continue;
+      const th = 4 + Math.floor(hash3(x, 31, z) * 4), R = 2 + (hash3(x, 33, z) > 0.5 ? 1 : 0);
+      const capId = hash3(x, 35, z) < 0.4 ? B.CAP_GLOW : B.CAP_RED;
+      for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) for (let dy = 0; dy <= 1; dy++) {
+        const px = lx + dx, pz = lz + dz, py = h + th + dy;
+        if (px < 0 || px >= CS || pz < 0 || pz >= CS || py >= CH) continue;
+        const dd = Math.hypot(dx, dz);
+        if (dy === 1 ? dd > R - 0.8 : dd > R + 0.4) continue;
+        d[px + pz * CS + py * S2] = capId;
+      }
+      if (lx >= 0 && lx < CS && lz >= 0 && lz < CS) for (let y = h + 1; y < h + th; y++) d[lx + lz * CS + y * S2] = B.STEM;
+      maxY = Math.max(maxY, h + th + 2);
     }
 
     // trees
@@ -147,6 +174,16 @@ export class World {
       }
       maxY = Math.max(maxY, cy + 4);
     }
+
+    // landmarks: obelisks, vaults, geodes, sky islands, the giant glowcap
+    stampLandmarks(this, cx, cz, CS, (x, y, z, id, onlyAir) => {
+      const lx = x - ox, lz = z - oz;
+      if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || y < 1 || y >= CH) return;
+      const i = lx + lz * CS + y * S2;
+      if (onlyAir && d[i] !== B.AIR) return;
+      d[i] = id;
+      if (id && y > maxY) maxY = y;
+    });
 
     const ed = this.edits.get(chunkKey(cx, cz));
     if (ed) for (const [i, id] of ed) { d[i] = id; if (id) maxY = Math.max(maxY, Math.floor(i / S2)); }

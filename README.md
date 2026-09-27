@@ -54,6 +54,74 @@ keep WebSocket connections open.
 | Chat | T / Enter | 💬 |
 | Hacks menu | H (N = noclip, X = X-ray) | ⚡ Hacks |
 
+## Echoes & consequences: how the systems connect
+
+Voxelia's design rule: **everything you do in one system matters in another.**
+
+### The battlefield is the world
+Battles happen on the real terrain where they start. The 🌍 **Terrain** command (center of the battle diamond, key T)
+reads the blocks around the fight:
+
+| Nearby | Battle option | Consequence in the world |
+| --- | --- | --- |
+| TNT (placed earlier) | 💣 Detonate: heavy area damage, can hurt you | A real crater; nearby TNT chain-reacts |
+| Ore / crystal | ⛏ Rip it out and hurl it (diamond hits hardest) / 🔮 shatter for full FP | The ore is gone from the world |
+| A ledge 4+ blocks down | ⛰ Shove a foe off (timed) | It's out of the fight (half XP) |
+| Water | 🌊 Splash: foes may lose a turn | |
+| Trees | 🌳 Shake: apple, coins… or a Buzzbee drops in against you | |
+| Sand | 🏜 Blind foes for 2 turns | |
+
+Standing higher than your foes gives **+25% attack**; bouncy mushroom caps nearby power up **Super Jump**.
+**Fire Burst scorches the land** (grass → dirt, leaves burn, snow melts) and **Spore Slam cracks the ground**.
+TNT going off in the overworld hurts roaming enemies too, so **traps work**.
+
+### Echoes: what you learn in battle becomes how you move
+Defeat 3 of a kind and you learn its Echo, which works both in battle and in the world:
+
+| Echo | From | In the world | In battle |
+| --- | --- | --- | --- |
+| 🪽 Hover | Buzzbee | Double jump; hold jump while falling to glide | Wider guard windows |
+| 💨 Shell Dash (E) | Spikey | Dash through dirt, sand, leaves, **cracked ruins**; ramming an enemy = First Strike | Hits all grounded foes, ignores defense |
+| 💥 Spore Slam (Q, mid-air) | Shroomba | Ground pound that cracks **geodes** and ruins, lights TNT; slam onto a **mushroom cap** for a huge bounce | Heavy hit + stun |
+| 👁 Echo Sense (V) | Gem Mite | The ground turns transparent around you for a few seconds | See every enemy's next move |
+
+### A world worth reading
+- **Glowcap Groves**: violet biomes of giant bouncy mushrooms that glow at night. Each grove around a **giant
+  glowcap** has a sleeping boss, the **Mycelord**. It is visible from far away.
+- **Starstones**: tall obelisks topped with glowing runes. Touch the altar for lore, and a hint pointing to the nearest boss.
+- **Ruin Vaults**: sealed with cracked stone (Shell Dash, Spore Slam or TNT, or build your way in) and holding relics.
+- **Geodes**: hollow crystal spheres deep underground. Mining crystal or diamond can attract Gem Mites.
+- **Sky Islands**: floating islands with rich ore and sky vaults (Cloud Boots, Star Shard). You can reach them with
+  Hover, a beanstalk, a mountain glide, or by building.
+- **Frontiers**: every ring of distance from spawn (250, 500, 800…) is stranger: more groves, golden **elites**
+  carrying relics, and better peddler goods.
+
+### Discovery chain
+Starstone lore → hint toward a Mycelord → wake it (punch it, or blow it up) → **boss battle** (Spore Storm, Earthshaker,
+summons minions; weak to fire) → its glowcap **turns gold** and Shroombas stop spawning there (synced as world edits) → you get
+the **Spore Crown** → **every Starstone becomes a waystone** for fast travel between the ones you've found → a
+**trophy** appears beside your home beacon.
+
+### Ecology
+Enemies depend on where you are: Buzzbees by day on flowery plains, Spikeys in deserts and snow, Shroombas in forests
+(**Glowshrooms** at night), **Gem Mites** in caves, and golden elites far from spawn. Enemies 5+ levels below you
+run away from you.
+
+### Wandering things
+- **Pip the Peddler** sometimes camps at landmarks. His stock depends on distance from spawn: healing, crystal
+  shards, a beanstalk seed, a bottled Starman, the Feather Charm relic (far lands only) and **rumors** that mark an
+  undiscovered landmark on your compass.
+- A **sky whale** sometimes crosses the night sky. Get close to it (fly, glide, climb a beanstalk) and it raises your max FP.
+
+### Home, compass & journal
+Place a **Home beacon** (hotbar slot 9): punch it to rest, and you respawn there if defeated. The **compass** shows
+landmarks you've found or heard about. The **journal** (J / 📖) lists echoes, relics, discoveries, bestiary and lore.
+
+### Perfect timing
+Every timing ring has a dead-centre **Excellent / Perfect guard** zone: Excellent attacks deal ×2.5, and a perfect guard blocks all
+damage and counters. Enemies follow move patterns (Spikey **curls** so physical hits hurt you; Gem Mites **charge** a
+huge spike) that you can read with Echo Sense.
+
 ## RPG mode (Super Mario RPG style)
 
 - **Enemies** roam the world: Shroomba, Spikey and Buzzbee. Their level rises with yours and with distance from spawn.
@@ -63,7 +131,7 @@ keep WebSocket connections open.
   to chain up to 8 hits; 🔥 Fire Burst: hits every enemy), 🍄 Items (Mushroom, Honey Syrup), 🛡 Defend, 🏃 Run.
 - **Timed hits:** press Space / click / tap when the ring turns gold. On your attacks it doubles damage ("Nice!"); on enemy attacks it halves the damage you take ("Guard!").
 - **Progression:** XP, level-ups (+HP, FP, attack, defense, magic), coins, and items. Progress is saved in your browser.
-- **Floating ? blocks:** punch them for coins, Mushrooms or Honey Syrup.
+- **Floating ? blocks:** punch them for coins, items, a Starman (touching enemies defeats them), a beanstalk to the sky… or an ambush.
 - Enemies can be switched off in the hacks menu ("Enemies & battles").
 
 ## Hacks and animals
@@ -96,7 +164,11 @@ your own screen.
 ```
 server.js          Express + ws: static files / Vite middleware, seed, edits, player relay, chat, persistence
 src/main.js        renderer, sky/lighting, chunk streaming, player physics, interaction, HUD, networking glue
-src/world.js       seeded terrain (biomes, caves, trees), chunk storage, edits, voxel raycast
+src/world.js       seeded terrain (biomes incl. Glowcap Groves, caves, trees, giant mushrooms), chunk storage, edits, raycast
+src/landmarks.js   deterministic landmarks (starstones, vaults, geodes, sky islands, boss glowcaps) for generation and queries
+src/rpg.js         enemies & ecology, terrain-aware battles, echoes, relics, items, bosses, progression
+src/discovery.js   landmark discovery, compass, starstone lore/waystones, rumors, frontiers, journal
+src/wonders.js     Pip the Peddler and the sky whale
 src/mesher.js      chunk meshing: face culling, AO, plants, water
 src/textures.js    procedural texture + normal atlas, hotbar icons, water normals
 src/controls.js    desktop + touch input

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { TILE, BLOCKS } from './blocks.js';
 
-const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 6;
+const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 10;
 const W = CELL * COLS, H = CELL * ROWS;
 
 export function tileUV(tile) {
@@ -203,6 +203,72 @@ P.used = (u, v) => {
   return [...sc([0.55, 0.36, 0.2], 0.85 + n * 0.2 - (e < 0.05 ? 0.25 : 0)), 1, e < 0.05 ? 0.1 : 0.6];
 };
 
+P.mycel = (u, v) => {
+  const n = fbm(u, v, 4, 4, 4, 161), s = px(u, v, 162);
+  const k = 0.7 + n * 0.4 + (s > 0.93 ? 0.35 : 0);
+  return [0.5 * k, 0.4 * k, 0.55 * k, 1, n * 0.5 + (s > 0.93 ? 0.4 : 0)];
+};
+P.mycelSide = sideTop(P.dirt, P.mycel, 163, 0.14);
+P.stem = (u, v) => {
+  const n = fbm(u, v, 16, 2, 3, 171);
+  return [...sc([0.9, 0.85, 0.74], 0.78 + n * 0.3), 1, n];
+};
+const cap = (base, spot, seed, spotGlow) => (u, v) => {
+  const [d1, , id] = voronoi(u, v, 3, seed), n = fbm(u, v, 8, 8, 2, seed + 1);
+  if (hi(id, 7, seed) < 0.55 && d1 < 0.11 + hi(id, 8, seed) * 0.05) return [...sc(spot, 0.92 + n * 0.1), 1, 0.9];
+  const e = Math.min(u, v, 1 - u, 1 - v);
+  return [...sc(base, 0.8 + n * 0.3 - (e < 0.03 ? 0.15 : 0)), 1, 0.5 + n * 0.2];
+};
+P.capRed = cap([0.8, 0.12, 0.1], [0.97, 0.95, 0.9], 181);
+P.capGlow = cap([0.36, 0.14, 0.5], [0.4, 1, 0.95], 183);
+P.capGold = cap([0.95, 0.68, 0.12], [1, 0.97, 0.85], 185);
+P.obsidian = (u, v) => {
+  const n = fbm(u, v, 4, 4, 4, 191), st = Math.abs(fbm(u, v, 2, 6, 3, 192) - 0.5);
+  return [...sc([0.12, 0.08, 0.18], 0.7 + n * 0.5 + (st < 0.03 ? 0.8 : 0)), 1, n];
+};
+P.starstone = (u, v) => {
+  const x = Math.floor(u * 8), y = Math.floor(v * 8), cellU = u * 8 - x, cellV = v * 8 - y;
+  const rune = hi(x, y, 201) < 0.45 && (cellU < 0.3 || cellV < 0.3) && cellU < 0.9 && cellV < 0.9;
+  if (rune) return [0.35, 0.95, 1, 1, 0.9];
+  return [...sc([0.1, 0.1, 0.2], 0.8 + fbm(u, v, 4, 4, 2, 202) * 0.4), 1, 0.3];
+};
+P.cracked = (u, v) => {
+  const b = P.brick(u, v), r = Math.abs(fbm(u, v, 3, 3, 4, 211) - 0.5);
+  if (r < 0.025) return [0.08, 0.06, 0.05, 1, 0];
+  return [b[0] * 0.75, b[1] * 0.8, b[2] * 0.85, 1, b[4]];
+};
+P.geode = (u, v) => {
+  const n = fbm(u, v, 8, 8, 4, 221), s = px(u, v, 222);
+  return [...sc([0.42, 0.36, 0.5], 0.65 + n * 0.5 + (s > 0.9 ? 0.25 : 0)), 1, n];
+};
+P.crystal = (u, v) => {
+  const [d1, d2] = voronoi(u, v, 4, 231), e = d2 - d1;
+  return [...sc([0.78, 0.55, 1], 0.7 + Math.min(1, e * 6) * 0.45), 1, Math.min(1, e * 5)];
+};
+P.vaultSide = (u, v) => {
+  const n = fbm(u, v, 2, 16, 3, 241);
+  if (v > 0.12 && v < 0.2 || v > 0.8 && v < 0.88) return [...sc([0.95, 0.75, 0.25], 0.85 + n * 0.2), 1, 0.9];
+  if (Math.hypot(u - 0.5, v - 0.5) < 0.09) return [0.2, 0.15, 0.08, 1, 0.1];
+  return [...sc([0.38, 0.22, 0.12], 0.7 + n * 0.5), 1, 0.4 + n * 0.3];
+};
+P.vaultTop = (u, v) => {
+  const a = Math.atan2(v - 0.5, u - 0.5), d = Math.hypot(u - 0.5, v - 0.5);
+  if (d < 0.18 + Math.cos(a * 5) * 0.08) return [1, 0.82, 0.3, 1, 1];
+  return P.vaultSide(u, 0.5);
+};
+P.beacon = (u, v) => {
+  const d = Math.hypot(u - 0.5, v - 0.5);
+  if (d < 0.2) return [...sc([1, 0.85, 0.45], 1.1 - d * 2), 1, 1];
+  if (d < 0.26) return [0.3, 0.25, 0.2, 1, 0.2];
+  return P.stone(u, v);
+};
+P.trophy = (u, v) => {
+  const n = fbm(u, v, 4, 4, 3, 251), d = Math.hypot(u - 0.5, v - 0.45);
+  if (d < 0.2 && v < 0.5) return [...sc([1, 0.8, 0.2], 1), 1, 1];
+  if (Math.abs(u - 0.5) < 0.08 && v >= 0.45 && v < 0.8) return [0.95, 0.9, 0.75, 1, 0.8];
+  return [...sc([0.55, 0.4, 0.15], 0.8 + n * 0.3), 1, 0.4];
+};
+
 const PAINT = {
   [TILE.GRASS_TOP]: P.grass, [TILE.GRASS_SIDE]: P.grassSide, [TILE.DIRT]: P.dirt, [TILE.STONE]: P.stone,
   [TILE.SAND]: P.sand, [TILE.LOG_SIDE]: P.logSide, [TILE.LOG_TOP]: P.logTop, [TILE.LEAVES]: P.leaves,
@@ -210,6 +276,10 @@ const PAINT = {
   [TILE.SNOW_SIDE]: P.snowSide, [TILE.TALLGRASS]: P.tallgrass, [TILE.FLOWER]: P.flower, [TILE.BRICK]: P.brick,
   [TILE.COAL]: P.coal, [TILE.IRON]: P.iron, [TILE.GOLD]: P.gold, [TILE.DIAMOND]: P.diamond,
   [TILE.TNT_SIDE]: P.tntSide, [TILE.TNT_TOP]: P.tntTop, [TILE.QBLOCK]: P.qblock, [TILE.USED]: P.used,
+  [TILE.MYCEL_TOP]: P.mycel, [TILE.MYCEL_SIDE]: P.mycelSide, [TILE.STEM]: P.stem, [TILE.CAP_RED]: P.capRed,
+  [TILE.CAP_GLOW]: P.capGlow, [TILE.CAP_GOLD]: P.capGold, [TILE.OBSIDIAN]: P.obsidian, [TILE.STARSTONE]: P.starstone,
+  [TILE.CRACKED]: P.cracked, [TILE.GEODE]: P.geode, [TILE.CRYSTAL]: P.crystal, [TILE.VAULT_SIDE]: P.vaultSide,
+  [TILE.VAULT_TOP]: P.vaultTop, [TILE.BEACON]: P.beacon, [TILE.TROPHY]: P.trophy,
 };
 
 export function buildAtlas(anisotropy = 4) {

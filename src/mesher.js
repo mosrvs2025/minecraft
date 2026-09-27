@@ -14,12 +14,12 @@ const FACES = [
   { n: [0, 0, 1], c: [[0, 0, 1, 0, 0], [1, 0, 1, 1, 0], [0, 1, 1, 0, 1], [1, 1, 1, 1, 1]] },
 ];
 const AO_CURVE = [0.38, 0.58, 0.8, 1];
-const UVS = Array.from({ length: 24 }, (_, t) => tileUV(t));
+const UVS = Array.from({ length: 40 }, (_, t) => tileUV(t));
 
 class Buf {
-  constructor() { this.pos = []; this.nor = []; this.uv = []; this.col = []; this.wind = []; this.idx = []; this.n = 0; }
-  vert(x, y, z, nx, ny, nz, u, v, c, w) {
-    this.pos.push(x, y, z); this.nor.push(nx, ny, nz); this.uv.push(u, v); this.col.push(c, c, c); this.wind.push(w);
+  constructor() { this.pos = []; this.nor = []; this.uv = []; this.col = []; this.wind = []; this.glow = []; this.idx = []; this.n = 0; }
+  vert(x, y, z, nx, ny, nz, u, v, c, w, g = 0) {
+    this.pos.push(x, y, z); this.nor.push(nx, ny, nz); this.uv.push(u, v); this.col.push(c, c, c); this.wind.push(w); this.glow.push(g);
   }
   geometry() {
     if (!this.n) return null;
@@ -29,6 +29,7 @@ class Buf {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('wind', new THREE.Float32BufferAttribute(this.wind, 1));
+    g.setAttribute('glow', new THREE.Float32BufferAttribute(this.glow, 1));
     g.setIndex(this.idx);
     g.computeBoundingSphere();
     return g;
@@ -44,7 +45,7 @@ export function meshChunk(world, chunk) {
     return world.get(ox + x, y, oz + z);
   };
   // X-ray: everything except ores/TNT is treated as air
-  const xray = world.xray, shown = (id) => !xray || XRAY_SHOW.has(id);
+  const xc = world.xrayCenter, xray = world.xray && (!xc || (Math.abs(chunk.cx - xc[0]) <= 2 && Math.abs(chunk.cz - xc[1]) <= 2)), shown = (id) => !xray || XRAY_SHOW.has(id);
   const occ = (x, y, z) => { const id = get(x, y, z); return BLOCKS[id].ao && shown(id) ? 1 : 0; };
   const solid = new Buf(), plant = new Buf(), water = new Buf();
   const ymax = Math.min(CH - 1, chunk.maxY + 1);
@@ -75,7 +76,7 @@ export function meshChunk(world, chunk) {
         for (let i = 0; i < 4; i++) {
           const cr = c[i];
           solid.vert(x + cr[0], y + cr[1], z + cr[2], n[0], n[1], n[2],
-            u0 + (u1 - u0) * cr[3], v0 + (v1 - v0) * cr[4], ao[i], b.wind * cr[1]);
+            u0 + (u1 - u0) * cr[3], v0 + (v1 - v0) * cr[4], b.glow ? Math.max(ao[i], 0.8) : ao[i], b.wind * cr[1], b.glow);
         }
         if (ao[0] + ao[3] > ao[1] + ao[2]) solid.idx.push(base, base + 1, base + 3, base, base + 3, base + 2);
         else solid.idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);

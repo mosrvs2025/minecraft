@@ -14,6 +14,9 @@ import { Avatar } from './avatar.js';
 import { Mobs } from './mobs.js';
 import { Hacks } from './hacks.js';
 import { Rpg } from './rpg.js';
+import { Discovery } from './discovery.js';
+import { Wonders } from './wonders.js';
+import { sitesNear } from './landmarks.js';
 
 const $ = (id) => document.getElementById(id);
 const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -101,11 +104,15 @@ async function start(name, Q) {
   const windify = (mat) => {
     mat.onBeforeCompile = (s) => {
       s.uniforms.uTime = uTime;
-      s.vertexShader = 'attribute float wind;\nuniform float uTime;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      s.vertexShader = 'attribute float wind;\nattribute float glow;\nvarying float vGlow;\nuniform float uTime;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vGlow = glow;
         vec4 wW = modelMatrix * vec4(transformed, 1.0);
         float sw = sin(uTime * 1.8 + wW.x * 0.55 + wW.z * 0.35) * 0.6 + sin(uTime * 3.3 + wW.x * 1.7 + wW.z) * 0.25;
         transformed.x += sw * wind * 0.11;
         transformed.z += cos(uTime * 1.4 + wW.z * 0.6) * wind * 0.07;`);
+      // glowing blocks (crystals, starstones, glowcaps) light themselves, which reads best at night
+      s.fragmentShader = 'varying float vGlow;\n' + s.fragmentShader.replace('#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * vGlow * 1.6;');
     };
     return mat;
   };
@@ -299,6 +306,10 @@ async function start(name, Q) {
     const reach = MOBILE ? 5.5 : 6;
     const mh = mobs.raycast(camera.position, lookDir, reach);
     const blockDist = target ? camera.position.distanceTo(tmpV.set(target.hit[0] + 0.5, target.hit[1] + 0.5, target.hit[2] + 0.5)) - 0.5 : Infinity;
+    const pipD = wonders.hitPip(camera.position, lookDir, reach);
+    if (pipD !== null && pipD < blockDist) { wonders.openShop(); return; }
+    const eh = rpg.raycast(camera.position, lookDir, reach);
+    if (eh && eh.dist < blockDist && (!mh || eh.dist < mh.dist) && !hacks.state.boom) { swing = 1; rpg.engage(eh.enemy, 'punch'); return; }
     if (mh && mh.dist < blockDist) {
       swing = 1;
       if (hacks.state.boom) { explode(mh.mob.pos.x, mh.mob.pos.y + 0.5, mh.mob.pos.z, 3.5); return; }
@@ -310,6 +321,14 @@ async function start(name, Q) {
     const [x, y, z] = target.hit;
     swing = 1;
     if (target.id === B.QBLOCK) { burst(x, y, z, B.QBLOCK); setBlock(x, y, z, rpg.openQBlock(x, y, z), true); return; }
+    const tb = BLOCKS[target.id];
+    if (!hacks.state.nuker && !hacks.state.boom && !controls.down) {
+      if (target.id === B.STARSTONE) { burst(x, y, z, B.STARSTONE); discovery.touchStarstone(x, y, z); return; }
+      if (target.id === B.VAULT) { burst(x, y, z, B.VAULT); setBlock(x, y, z, rpg.openVault(x, y, z), true); return; }
+      if (target.id === B.BEACON) { rpg.rest(); return; }
+      if (tb.resist) { hint('The stone hums. Nothing you have can break it.'); return; }
+      if (tb.tough) { burst(x, y, z, target.id); hint(rpg.echo('dash') || rpg.echo('slam') ? 'Too sturdy for fists. Try a Shell Dash, a Spore Slam… or TNT.' : 'Too sturdy for bare fists. Something with more force might crack it… or TNT.'); return; }
+    }
     if (hacks.state.boom) { explode(x + 0.5, y + 0.5, z + 0.5, 3.5); return; }
     if (hacks.state.nuker) {
       const list = [];
@@ -327,8 +346,11 @@ async function start(name, Q) {
     burst(x, y, z, target.id);
     setBlock(x, y, z, B.AIR, true);
     if (BLOCKS[world.get(x, y + 1, z)].kind === 'plant') setBlock(x, y + 1, z, B.AIR, true);
+    rpg.onMined(target.id, x, y, z);
     swing = 1;
   }
+  let hintAt = 0;
+  function hint(t) { const now = performance.now(); if (now - hintAt > 2500) { hintAt = now; chatLine('', t); } }
   function doPlace() {
     if (!target) return;
     const [x, y, z] = BLOCKS[target.id].kind === 'plant' ? target.hit : target.prev;
@@ -349,6 +371,7 @@ async function start(name, Q) {
       return;
     }
     setBlock(x, y, z, HOTBAR[sel], true);
+    if (HOTBAR[sel] === B.BEACON) rpg.setHome(x, y, z);
   }
 
   function applyBatch(list, fx, local) {
@@ -419,7 +442,7 @@ async function start(name, Q) {
     for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) for (let dz = -R; dz <= R; dz++) {
       if (Math.sqrt(dx * dx + dy * dy + dz * dz) > r - Math.random() * 1.2) continue;
       const bx = cx + dx, by = cy + dy, bz = cz + dz, id = world.get(bx, by, bz);
-      if (id === B.AIR || id === B.WATER || by < 1) continue;
+      if (id === B.AIR || id === B.WATER || by < 1 || BLOCKS[id].resist) continue;
       if (id === B.TNT) {
         const v = new THREE.Vector3(dx, 2, dz).normalize().multiplyScalar(7);
         primeTNT(bx + 0.5, by, bz + 0.5, 0.4 + Math.random() * 0.8, v);
@@ -429,6 +452,7 @@ async function start(name, Q) {
     applyBatch(list, [x, y, z, r], true);
     explosionFx(x, y, z, r);
     mobs.blast(tmpV.set(x, y, z), r);
+    rpg.blast(new THREE.Vector3(x, y, z), r);
     const d = player.pos.clone().add(new THREE.Vector3(0, 0.9, 0)).sub(new THREE.Vector3(x, y, z));
     const dist = d.length();
     if (dist < r * 2.5 && !hacks.state.noclip) {
@@ -470,6 +494,10 @@ async function start(name, Q) {
       if (code === 'KeyH') hacks.open ? hacks.close() : openHacks();
       if (code === 'KeyN') hacks.toggle('noclip');
       if (code === 'KeyX') hacks.toggle('xray');
+      if (code === 'KeyE') startDash();
+      if (code === 'KeyQ') startSlam();
+      if (code === 'KeyV') startSense();
+      if (code === 'KeyJ') $('journal').hidden ? discovery.openJournal() : discovery.closeJournal();
     },
   });
 
@@ -479,7 +507,7 @@ async function start(name, Q) {
       if (k === 'fly') { player.fly = v; player.vel.y = 0; $('b-down').hidden = !v; }
       if (k === 'noclip' && v && !hacks.state.fly) hacks.set('fly', true);
       if (k === 'fly' && !v && hacks.state.noclip) hacks.set('noclip', false);
-      if (k === 'xray') { world.xray = v; for (const c of world.chunks.values()) c.dirty = true; }
+      if (k === 'xray') { world.xray = v; world.xrayCenter = null; senseT = 0; for (const c of world.chunks.values()) c.dirty = true; }
       if (k === 'enemies') rpg.enabled = v;
       const names = { enemies: 'Enemies', fly: 'Flying', speed: 'Speed', jump: 'Super jump', moon: 'Moon gravity', noclip: 'Noclip', xray: 'X-ray', fullbright: 'Fullbright', nuker: 'Nuker', boom: 'Explosive punch', brush: 'Big brush', freeze: 'Time freeze', mobs: 'Animal spawning' };
       chatLine('', `${names[k]} ${v ? 'ON' : 'OFF'}`);
@@ -499,10 +527,58 @@ async function start(name, Q) {
     onBattle: (on) => {
       controls.enabled = !on; controls.breakHeld = controls.placeHeld = false;
       if (on) document.exitPointerLock?.();
-      player.vel.set(0, 0, 0);
+      player.vel.set(0, 0, 0); dashT = 0; slamming = false;
       document.body.classList.toggle('in-battle', on);
     },
+    hooks: {
+      setBlocks: (list) => applyBatch(list, null, true),
+      explode: (x, y, z, r) => explode(x, y, z, r),
+      isNight: () => sunDir.y < -0.05,
+      beanstalk: (x, y, z) => beanstalk(x, y, z),
+      onBossDefeated: (site) => bossDefeated(site),
+      teleport: (x, y, z) => teleport(x, y, z),
+      shake: (v) => { shake = Math.max(shake, v); },
+      onEchoes: (r) => { $('b-dash').hidden = !r.echo('dash'); $('b-slam').hidden = !r.echo('slam'); $('b-sense').hidden = !r.echo('sense'); },
+    },
   });
+  const discovery = new Discovery({ world, player, rpg, chat: chatLine, controls, teleport: (x, y, z) => teleport(x, y, z) });
+  const wonders = new Wonders({ scene, world, player, rpg, discovery, chat: chatLine, controls, hooks: { beanstalk: (x, y, z) => beanstalk(x, y, z) } });
+
+  function teleport(x, y, z) { player.pos.set(x, y, z); player.vel.set(0, 0, 0); airJumps = 0; slamming = false; dashT = 0; }
+
+  /** A ? block (or Pip) plants a spiral beanstalk that climbs toward the clouds — and the sky islands. */
+  function beanstalk(x, y, z) {
+    const top = Math.min(CH - 6, Math.max(y + 24, 100));
+    let h = y + 1;
+    const grow = () => {
+      const list = [];
+      for (let k = 0; k < 2 && h <= top; k++, h++) {
+        list.push([x, h, z, B.LOG]);
+        const a = h * (Math.PI / 4), sx = x + Math.round(Math.cos(a) * 2), sz = z + Math.round(Math.sin(a) * 2);
+        if (world.get(sx, h, sz) === B.AIR) list.push([sx, h, sz, B.LEAVES]);
+      }
+      if (h > top) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (world.get(x + dx, top + 1, z + dz) === B.AIR) list.push([x + dx, top + 1, z + dz, B.LEAVES]);
+      applyBatch(list, null, true);
+      if (h <= top) setTimeout(grow, 90);
+    };
+    grow();
+  }
+
+  /** Defeating a Mycelord changes its grove for everyone: the glowcap turns gold, and a trophy appears at home. */
+  function bossDefeated(site) {
+    const list = [], top = site.y + 17;
+    for (let dx = -12; dx <= 12; dx++) for (let dz = -12; dz <= 12; dz++) for (let dy = -4; dy <= 5; dy++)
+      if (world.get(site.x + dx, top + dy, site.z + dz) === B.CAP_GLOW) list.push([site.x + dx, top + dy, site.z + dz, B.CAP_GOLD]);
+    let spot = null;
+    const hb = rpg.s.homeBlock;
+    if (hb) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      if (world.get(hb[0] + dx, hb[1], hb[2] + dz) === B.AIR) { spot = [hb[0] + dx, hb[1], hb[2] + dz]; break; }
+    }
+    if (!spot) { const gy = rpg.groundAt(site.x + 0.5, site.y + 6, site.z + 8.5, 12) ?? site.y + 1; spot = [site.x, gy, site.z + 8]; }
+    list.push([...spot, B.TROPHY]);
+    applyBatch(list, null, true);
+    chatLine('', hb ? '🏆 A golden trophy appears beside your home beacon.' : '🏆 A golden trophy rises where the Mycelord fell. (Set a home beacon and future trophies will go there.)');
+  }
   function openHacks() {
     controls.enabled = false; document.exitPointerLock?.();
     controls.breakHeld = controls.placeHeld = false;
@@ -512,6 +588,73 @@ async function start(name, Q) {
   const tapBtn = (id, fn) => { const el = $(id); el.addEventListener('click', fn); el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false }); };
   tapBtn('hack-btn', openHacks);
   tapBtn('b-fly', () => hacks.toggle('fly'));
+  tapBtn('b-dash', () => startDash());
+  tapBtn('b-slam', () => startSlam());
+  tapBtn('b-sense', () => startSense());
+
+  // ---- echo movement: hover/glide, shell dash, spore slam, echo sense ------------------------------------------------
+  let prevJump = false, airJumps = 0, dashT = 0, dashCd = 0, slamming = false, slamFrom = 0, senseT = 0, senseCd = 0;
+  const dashDir = new THREE.Vector3();
+  const SOFT = new Set([B.DIRT, B.GRASS, B.SAND, B.LEAVES, B.SNOW, B.TALLGRASS, B.FLOWER, B.CRACKED, B.GLASS, B.MYCEL, B.CAP_RED, B.CAP_GLOW]);
+  const HARD = new Set([B.STONE, B.COBBLE, B.COAL_ORE, B.IRON_ORE, B.GOLD_ORE, B.DIAMOND_ORE, B.BRICK, B.PLANKS, B.LOG, B.STEM]);
+  const SLAMMABLE = new Set([B.GEODE, B.CRACKED, B.GLASS, B.LEAVES]);
+  function startDash() {
+    if (!rpg.echo('dash') || rpg.inBattle || dashCd > 0 || !controls.enabled) return;
+    dashDir.set(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
+    dashT = 0.32; dashCd = 0.9; shake = Math.max(shake, 0.15);
+  }
+  function startSlam() {
+    if (!rpg.echo('slam') || rpg.inBattle || player.onGround || player.fly || slamming || !controls.enabled) return;
+    slamming = true; slamFrom = player.pos.y; player.vel.x *= 0.3; player.vel.z *= 0.3;
+  }
+  function startSense() {
+    if (!rpg.echo('sense') || senseCd > 0 || hacks.state.xray) return;
+    const cx = Math.floor(player.pos.x / CS), cz = Math.floor(player.pos.z / CS);
+    world.xray = true; world.xrayCenter = [cx, cz];
+    for (const c of world.chunks.values()) if (Math.abs(c.cx - cx) <= 2 && Math.abs(c.cz - cz) <= 2) c.dirty = true;
+    senseT = rpg.has('lantern') ? 8 : 4; senseCd = 18;
+    chatLine('', '👁 The ground turns to glass around you…');
+  }
+  function endSense() {
+    const [cx, cz] = world.xrayCenter ?? [0, 0];
+    world.xray = hacks.state.xray; world.xrayCenter = null;
+    for (const c of world.chunks.values()) if (Math.abs(c.cx - cx) <= 2 && Math.abs(c.cz - cz) <= 2) c.dirty = true;
+  }
+  function dashSmash(dt) {
+    const p = player.pos, list = [];
+    // look far enough ahead to cover this frame's travel (21 blocks/s) plus the body's half-width
+    for (const ahead of [0.7, 0.7 + 21 * dt]) for (const dy of [0, 1]) for (const side of [-0.3, 0, 0.3]) {
+      const bx = Math.floor(p.x + dashDir.x * ahead - dashDir.z * side), by = Math.floor(p.y + dy + 0.1), bz = Math.floor(p.z + dashDir.z * ahead + dashDir.x * side);
+      const id = world.get(bx, by, bz);
+      if (SOFT.has(id) || (rpg.has('shell') && HARD.has(id))) {
+        if (!list.some((e) => e[0] === bx && e[1] === by && e[2] === bz)) { list.push([bx, by, bz, B.AIR]); burst(bx, by, bz, id); rpg.onMined(id, bx, by, bz); }
+      }
+    }
+    if (list.length) { applyBatch(list, null, true); shake = Math.max(shake, 0.2); }
+    const e = rpg.enemies.find((en) => en.pos.distanceTo(p) < (en.T.radius || 0) + 1.6);
+    if (e) { dashT = 0; rpg.engage(e, 'dash'); }
+    for (const m of mobs.list) if (m.pos.distanceTo(p) < 1.6) mobs.hit(m, dashDir, 16);
+  }
+  function slamImpact(under, fall) {
+    const p = player.pos, bx = Math.floor(p.x), by = Math.floor(p.y - 0.1), bz = Math.floor(p.z);
+    shake = Math.max(shake, Math.min(1, 0.3 + fall * 0.02));
+    if (BLOCKS[under].bouncy) {
+      player.vel.y = Math.min(44, 17 + fall * 0.9); player.onGround = false;
+      rpg.popText('BOING!', p.clone().add(new THREE.Vector3(0, 2, 0)), 'nice');
+      return;
+    }
+    const list = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy >= -1; dy--) {
+      const id = world.get(bx + dx, by + dy, bz + dz);
+      if (id === B.TNT) { list.push([bx + dx, by + dy, bz + dz, B.AIR]); primeTNT(bx + dx + 0.5, by + dy, bz + dz + 0.5, 1.5); }
+      else if (SLAMMABLE.has(id)) { list.push([bx + dx, by + dy, bz + dz, B.AIR]); burst(bx + dx, by + dy, bz + dz, id); }
+    }
+    if (list.length) applyBatch(list, null, true);
+    burst(bx, by, bz, under);
+    mobs.blast(p.clone(), 1.5);
+    const e = rpg.enemies.find((en) => en.pos.distanceTo(p) < (en.T.radius || 0) + 4.5);
+    if (e) rpg.engage(e, 'slam');
+  }
   $('b-down').hidden = true;
   document.addEventListener('pointerlockchange', () => { $('hint').hidden = controls.locked || MOBILE || !chatIn.hidden; });
   $('hint').hidden = MOBILE;
@@ -598,24 +741,47 @@ async function start(name, Q) {
 
   function updatePlayer(dt) {
     const c = controls, p = player;
+    if (!world.getChunk(Math.floor(p.pos.x / CS), Math.floor(p.pos.z / CS))?.meshed) { camera.position.set(p.pos.x, p.pos.y + EYE, p.pos.z); return; } // wait for the ground after a warp
     const fwd = tmpV.set(-Math.sin(c.yaw), 0, -Math.cos(c.yaw));
     const wx = fwd.x * c.move.f + Math.cos(c.yaw) * c.move.r, wz = fwd.z * c.move.f - Math.sin(c.yaw) * c.move.r;
     const wl = Math.hypot(wx, wz), nx = wl > 1 ? wx / wl : wx, nz = wl > 1 ? wz / wl : wz;
     p.inWater = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.4), Math.floor(p.pos.z)) === B.WATER;
-    const speed = (p.fly ? (c.sprint ? 22 : 11) : p.inWater ? 3.2 : c.sprint ? 6.4 : 4.4) * (hacks.state.speed ? 3 : 1);
-    const grav = hacks.state.moon ? 6 : 28, jumpV = hacks.state.jump ? 18 : 8.7;
-    const acc = 1 - Math.exp(-dt * (p.onGround || p.fly ? 14 : p.inWater ? 5 : 3.5));
-    p.vel.x += (nx * speed - p.vel.x) * acc; p.vel.z += (nz * speed - p.vel.z) * acc;
+    dashCd -= dt; senseCd -= dt;
+    if (senseT > 0 && (senseT -= dt) <= 0) endSense();
+    const jumpEdge = c.jump && !prevJump; prevJump = c.jump;
+    const hover = rpg.echo('hover'), glideOk = hover || rpg.has('feather');
+    const maxAir = (hover ? 1 : 0) + (rpg.has('clouds') ? 1 : 0);
+    const speed = (p.fly ? (c.sprint ? 22 : 11) : p.inWater ? 3.2 : c.sprint ? 6.4 : 4.4) * (hacks.state.speed ? 3 : 1) * (rpg.star > 0 ? 1.5 : 1);
+    const grav = hacks.state.moon ? 6 : 28, jumpV = (hacks.state.jump ? 18 : 8.7) * (rpg.has('spring') ? 1.2 : 1);
+    const gliding = glideOk && !p.fly && !p.inWater && !p.onGround && c.jump && p.vel.y < -2.5 && !slamming;
+    const acc = 1 - Math.exp(-dt * (p.onGround || p.fly ? 14 : p.inWater ? 5 : gliding ? 6 : 3.5));
+    p.vel.x += (nx * speed * (gliding ? 1.35 : 1) - p.vel.x) * acc; p.vel.z += (nz * speed * (gliding ? 1.35 : 1) - p.vel.z) * acc;
     if (p.fly) p.vel.y += (((c.jump ? 1 : 0) - (c.down ? 1 : 0)) * speed - p.vel.y) * acc;
     else if (p.inWater) { p.vel.y -= grav * 0.32 * dt; p.vel.y *= 1 - 2.5 * dt; if (c.jump) p.vel.y = Math.min(p.vel.y + 24 * dt, 3.5); }
-    else { p.vel.y = Math.max(-55, p.vel.y - grav * dt); if (c.jump && p.onGround) p.vel.y = jumpV; }
+    else {
+      p.vel.y = Math.max(-55, p.vel.y - grav * dt);
+      if (c.jump && p.onGround) p.vel.y = jumpV;
+      else if (jumpEdge && !p.onGround && airJumps < maxAir) {
+        p.vel.y = jumpV * 0.95; airJumps++;
+        burst(p.pos.x - 0.5, p.pos.y - 0.6, p.pos.z - 0.5, B.GLASS);
+      }
+      if (gliding) p.vel.y = Math.max(p.vel.y, -2.4);
+    }
+    if (slamming) { p.vel.y = -38; p.vel.x *= 0.9; p.vel.z *= 0.9; }
+    if (dashT > 0) { dashT -= dt; p.vel.x = dashDir.x * 21; p.vel.z = dashDir.z * 21; p.vel.y = Math.max(p.vel.y, 0.4); dashSmash(dt); }
 
-    const hitX = moveAxis('x', p.vel.x * dt); if (hitX) p.vel.x = 0;
-    const hitZ = moveAxis('z', p.vel.z * dt); if (hitZ) p.vel.z = 0;
-    const falling = p.vel.y < 0;
+    const hitX = moveAxis('x', p.vel.x * dt); if (hitX) { p.vel.x = 0; if (dashT > 0) dashT = 0; }
+    const hitZ = moveAxis('z', p.vel.z * dt); if (hitZ) { p.vel.z = 0; if (dashT > 0) dashT = 0; }
+    const falling = p.vel.y < 0, vyBefore = p.vel.y;
     const hitY = moveAxis('y', p.vel.y * dt);
     p.onGround = hitY && falling;
     if (hitY) p.vel.y = 0;
+    if (p.onGround) {
+      airJumps = 0;
+      const under = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y - 0.1), Math.floor(p.pos.z));
+      if (slamming) { slamming = false; slamImpact(under, slamFrom - p.pos.y); }
+      else if (BLOCKS[under].bouncy && vyBefore < -5 && !c.down) { p.vel.y = Math.min(24, -vyBefore * 0.8 + 5); p.onGround = false; }
+    }
     // mobile auto-jump when walking into a 1-block step
     if (MOBILE && (hitX || hitZ) && p.onGround && wl > 0.3) {
       const fx = Math.floor(p.pos.x + nx * 0.6), fz = Math.floor(p.pos.z + nz * 0.6), fy = Math.floor(p.pos.y);
@@ -671,7 +837,11 @@ async function start(name, Q) {
     }
     updateEnvironment(dt, eye);
     updateParticles(dt);
-    if (ready) { mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); rpg.update(dt); rpg.update3DHero(dt); }
+    if (ready) {
+      mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); rpg.update(dt); rpg.update3DHero(dt);
+      if (!rpg.inBattle) discovery.update(dt, controls.yaw);
+      wonders.update(dt, sunDir.y < -0.05);
+    }
     updateFx(dt);
     for (const a of avatars.values()) a.update(dt);
 
@@ -686,5 +856,5 @@ async function start(name, Q) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__vx = { world, player, controls, camera, hacks, mobs, explode, rpg, get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
+  window.__vx = { renderer, world, player, controls, camera, hacks, mobs, explode, rpg, discovery, wonders, teleport, beanstalk, sites: (t, r = 900) => sitesNear(world, t, player.pos.x, player.pos.z, r), get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
 }
