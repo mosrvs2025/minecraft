@@ -10,7 +10,9 @@ export class Net {
       const finish = (v) => { if (!done) { done = true; resolve(v); } };
       setTimeout(() => finish(null), 2500);
       try {
-        const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+        // VITE_WS_URL points a statically hosted client (e.g. Vercel) at a separately hosted game server
+        const url = import.meta.env.VITE_WS_URL || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+        const ws = new WebSocket(url);
         this.ws = ws;
         ws.onmessage = (e) => {
           let m; try { m = JSON.parse(e.data); } catch { return; }

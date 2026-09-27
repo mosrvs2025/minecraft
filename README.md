@@ -22,6 +22,22 @@ To play with friends, open the same URL from other devices (e.g. `http://<your-L
 seed, time of day and every block edit are shared. Edits are saved to `world.json`. If the page is served without
 the Node server (plain static hosting), the game switches to single player.
 
+## Deploying to Vercel
+
+Vercel hosts the game client as a static site. It can't run the multiplayer server, because Vercel functions can't
+keep WebSocket connections open.
+
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new). `vercel.json` already configures the Vite
+   build and the `dist` output, so keep the defaults and click **Deploy**.
+   Or from a terminal: `npx vercel` for a preview, then `npx vercel --prod`.
+2. With no other setup, the Vercel site runs in **single-player** mode.
+3. **For multiplayer**, host `server.js` on a service that supports WebSockets. For example, on
+   [Render](https://render.com), create a new *Blueprint* from this repo; `render.yaml` sets up the server.
+   Railway and Fly.io also work (build `npm install && npm run build`, start `npm start`).
+   Then, in the Vercel project, open **Settings → Environment Variables**, add
+   `VITE_WS_URL = wss://<your-server-host>/ws`, and redeploy.
+   The server also serves the game itself, so its own URL works without Vercel.
+
 ## Controls
 
 | Action | Desktop | Mobile |

@@ -1,0 +1,7 @@
+# Optional: hosts the multiplayer server (Express + WebSocket) on Render.
+services:
+  - type: web
+    name: voxelia-server
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
