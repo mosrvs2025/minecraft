@@ -12,6 +12,7 @@ const TOGGLES = [
   ['brush', '🧱', 'Big brush 3×3', ''],
   ['freeze', '⏸️', 'Freeze time', ''],
   ['mobs', '🐷', 'Animals spawn', ''],
+  ['enemies', '👾', 'Enemies & battles', ''],
 ];
 const ACTIONS = [
   ['tntRain', '🧨', 'TNT rain'],
@@ -22,7 +23,7 @@ const ACTIONS = [
 export class Hacks {
   constructor({ onToggle, onAction, onTime, onClose }) {
     this.state = Object.fromEntries(TOGGLES.map(([k]) => [k, false]));
-    this.state.mobs = true;
+    this.state.mobs = true; this.state.enemies = true;
     this.cb = { onToggle, onAction, onTime, onClose };
     const el = this.el = document.getElementById('hacks');
     el.innerHTML = `
@@ -31,7 +32,7 @@ export class Hacks {
         <div class="hk-grid">${TOGGLES.map(([k, i, n, key]) => `<button class="hk" data-k="${k}"><span>${i}</span>${n}${key ? `<kbd>${key}</kbd>` : ''}</button>`).join('')}</div>
         <label class="hk-time">Time of day <input type="range" min="0" max="1440" step="10" /></label>
         <div class="hk-grid hk-act">${ACTIONS.map(([k, i, n]) => `<button class="hk" data-a="${k}"><span>${i}</span>${n}</button>`).join('')}</div>
-        <p class="hk-tip">Punch TNT to light it. Hit animals to knock them flying.</p>
+        <p class="hk-tip">Punch TNT to light it, punch ? blocks for loot. Walk into enemies to battle — time your presses!</p>
       </div>`;
     const stop = (e) => e.stopPropagation();
     for (const ev of ['mousedown', 'touchstart', 'touchmove', 'wheel', 'click', 'keydown']) el.addEventListener(ev, stop, { passive: true });
@@ -56,7 +57,7 @@ export class Hacks {
 
   render() {
     this.el.querySelectorAll('[data-k]').forEach((b) => b.classList.toggle('on', this.state[b.dataset.k]));
-    const active = TOGGLES.filter(([k]) => this.state[k] && k !== 'mobs').map(([, i]) => i).join(' ');
+    const active = TOGGLES.filter(([k]) => this.state[k] && k !== 'mobs' && k !== 'enemies').map(([, i]) => i).join(' ');
     document.getElementById('active-hacks').textContent = active;
   }
 }

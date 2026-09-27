@@ -119,6 +119,8 @@ export class World {
         const r = hash3(x, 7, z) , dens = biome === 'forest' ? 0.22 : 0.3;
         if (r < dens) d[lx + lz * CS + (h + 1) * S2] = r < 0.012 ? B.FLOWER : B.TALLGRASS;
       }
+      // floating ? blocks
+      if (h > SEA && h + 4 < CH && top !== B.SNOW && hash3(x, 23, z) < 0.003) { d[lx + lz * CS + (h + 4) * S2] = B.QBLOCK; maxY = Math.max(maxY, h + 4); }
     }
 
     // trees

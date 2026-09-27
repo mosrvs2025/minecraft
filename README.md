@@ -54,6 +54,18 @@ keep WebSocket connections open.
 | Chat | T / Enter | 💬 |
 | Hacks menu | H (N = noclip, X = X-ray) | ⚡ Hacks |
 
+## RPG mode (Super Mario RPG style)
+
+- **Enemies** roam the world: Shroomba, Spikey and Buzzbee. Their level rises with yours and with distance from spawn.
+  Walk into one to start a **turn-based battle**; up to 3 nearby enemies join. Landing on one from above gives a
+  **First Strike**, but don't jump on Spikey.
+- **Battle menu** (diamond buttons, or keys A / X / Y / B / R): ⚔️ Attack, ✨ Special (🦘 Super Jump: keep your timing
+  to chain up to 8 hits; 🔥 Fire Burst: hits every enemy), 🍄 Items (Mushroom, Honey Syrup), 🛡 Defend, 🏃 Run.
+- **Timed hits:** press Space / click / tap when the ring turns gold. On your attacks it doubles damage ("Nice!"); on enemy attacks it halves the damage you take ("Guard!").
+- **Progression:** XP, level-ups (+HP, FP, attack, defense, magic), coins, and items. Progress is saved in your browser.
+- **Floating ? blocks:** punch them for coins, Mushrooms or Honey Syrup.
+- Enemies can be switched off in the hacks menu ("Enemies & battles").
+
 ## Hacks and animals
 
 Open the **Hacks** menu with H or the ⚡ button:

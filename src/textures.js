@@ -184,13 +184,32 @@ P.tntTop = (u, v) => {
   return [...sc([0.8, 0.2, 0.15], 0.8 + n * 0.25), 1, 0.5];
 };
 
+const QMARK = ['01110', '10001', '00001', '00010', '00100', '00000', '00100'];
+const rivets = (u, v) => [[0.12, 0.12], [0.88, 0.12], [0.12, 0.88], [0.88, 0.88]].some(([a, b]) => Math.hypot(u - a, v - b) < 0.045);
+P.qblock = (u, v) => {
+  const x = Math.floor(u * T), y = Math.floor(v * T), S = 5, gx = 20, gy = 14;
+  const glyph = (ox, oy) => { const cx = Math.floor((x - gx - ox) / S), cy = Math.floor((y - gy - oy) / S);
+    return cx >= 0 && cx < 5 && cy >= 0 && cy < 7 && QMARK[cy][cx] === '1'; };
+  if (glyph(0, 0)) return [1, 0.97, 0.9, 1, 1];
+  if (glyph(3, 3)) return [0.45, 0.24, 0.05, 1, 0.3];
+  if (rivets(u, v)) return [0.35, 0.2, 0.05, 1, 0.2];
+  const e = Math.min(u, v, 1 - u, 1 - v), n = fbm(u, v, 8, 8, 2, 151);
+  if (e < 0.04) return [0.55, 0.3, 0.05, 1, 0.1];
+  return [...sc([1, 0.72, 0.12], 0.9 + n * 0.12 - (e < 0.08 ? 0.12 : 0)), 1, 0.6];
+};
+P.used = (u, v) => {
+  if (rivets(u, v)) return [0.22, 0.13, 0.07, 1, 0.2];
+  const e = Math.min(u, v, 1 - u, 1 - v), n = fbm(u, v, 8, 8, 2, 153);
+  return [...sc([0.55, 0.36, 0.2], 0.85 + n * 0.2 - (e < 0.05 ? 0.25 : 0)), 1, e < 0.05 ? 0.1 : 0.6];
+};
+
 const PAINT = {
   [TILE.GRASS_TOP]: P.grass, [TILE.GRASS_SIDE]: P.grassSide, [TILE.DIRT]: P.dirt, [TILE.STONE]: P.stone,
   [TILE.SAND]: P.sand, [TILE.LOG_SIDE]: P.logSide, [TILE.LOG_TOP]: P.logTop, [TILE.LEAVES]: P.leaves,
   [TILE.PLANKS]: P.planks, [TILE.GLASS]: P.glass, [TILE.COBBLE]: P.cobble, [TILE.SNOW]: P.snow,
   [TILE.SNOW_SIDE]: P.snowSide, [TILE.TALLGRASS]: P.tallgrass, [TILE.FLOWER]: P.flower, [TILE.BRICK]: P.brick,
   [TILE.COAL]: P.coal, [TILE.IRON]: P.iron, [TILE.GOLD]: P.gold, [TILE.DIAMOND]: P.diamond,
-  [TILE.TNT_SIDE]: P.tntSide, [TILE.TNT_TOP]: P.tntTop,
+  [TILE.TNT_SIDE]: P.tntSide, [TILE.TNT_TOP]: P.tntTop, [TILE.QBLOCK]: P.qblock, [TILE.USED]: P.used,
 };
 
 export function buildAtlas(anisotropy = 4) {

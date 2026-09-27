@@ -13,6 +13,7 @@ import { Net } from './net.js';
 import { Avatar } from './avatar.js';
 import { Mobs } from './mobs.js';
 import { Hacks } from './hacks.js';
+import { Rpg } from './rpg.js';
 
 const $ = (id) => document.getElementById(id);
 const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -308,6 +309,7 @@ async function start(name, Q) {
     if (!target) return;
     const [x, y, z] = target.hit;
     swing = 1;
+    if (target.id === B.QBLOCK) { burst(x, y, z, B.QBLOCK); setBlock(x, y, z, rpg.openQBlock(x, y, z), true); return; }
     if (hacks.state.boom) { explode(x + 0.5, y + 0.5, z + 0.5, 3.5); return; }
     if (hacks.state.nuker) {
       const list = [];
@@ -478,7 +480,8 @@ async function start(name, Q) {
       if (k === 'noclip' && v && !hacks.state.fly) hacks.set('fly', true);
       if (k === 'fly' && !v && hacks.state.noclip) hacks.set('noclip', false);
       if (k === 'xray') { world.xray = v; for (const c of world.chunks.values()) c.dirty = true; }
-      const names = { fly: 'Flying', speed: 'Speed', jump: 'Super jump', moon: 'Moon gravity', noclip: 'Noclip', xray: 'X-ray', fullbright: 'Fullbright', nuker: 'Nuker', boom: 'Explosive punch', brush: 'Big brush', freeze: 'Time freeze', mobs: 'Animal spawning' };
+      if (k === 'enemies') rpg.enabled = v;
+      const names = { enemies: 'Enemies', fly: 'Flying', speed: 'Speed', jump: 'Super jump', moon: 'Moon gravity', noclip: 'Noclip', xray: 'X-ray', fullbright: 'Fullbright', nuker: 'Nuker', boom: 'Explosive punch', brush: 'Big brush', freeze: 'Time freeze', mobs: 'Animal spawning' };
       chatLine('', `${names[k]} ${v ? 'ON' : 'OFF'}`);
     },
     onAction: (a) => {
@@ -490,6 +493,15 @@ async function start(name, Q) {
     },
     onTime: (min) => { timeOfDay = ((min - 360) / 1440) * DAY; },
     onClose: () => { controls.enabled = true; if (!MOBILE && !controls.locked) renderer.domElement.requestPointerLock?.(); },
+  });
+  const rpg = new Rpg({
+    scene, camera, world, player, controls, burst, chat: chatLine, isMobile: MOBILE, getSun: () => sunDir,
+    onBattle: (on) => {
+      controls.enabled = !on; controls.breakHeld = controls.placeHeld = false;
+      if (on) document.exitPointerLock?.();
+      player.vel.set(0, 0, 0);
+      document.body.classList.toggle('in-battle', on);
+    },
   });
   function openHacks() {
     controls.enabled = false; document.exitPointerLock?.();
@@ -549,9 +561,9 @@ async function start(name, Q) {
     sun.intensity = sunDir.y > -0.05 ? 0.15 + sunUp * 2.4 : 0.35 * THREE.MathUtils.smoothstep(-sunDir.y, 0.05, 0.3);
     sun.color.setRGB(1, 0.55 + sunUp * 0.42, 0.3 + sunUp * 0.6);
     if (sunDir.y <= -0.05) sun.color.setRGB(0.55, 0.65, 1);
-    hemi.intensity = 0.06 + day * 0.35;
+    hemi.intensity = 0.1 + day * 1.0;
     hemi.color.setRGB(0.35 + day * 0.4, 0.42 + day * 0.43, 0.6 + day * 0.4);
-    scene.environmentIntensity = 0.05 + day * 0.4;
+    scene.environmentIntensity = 0.06 + day * 0.7;
     renderer.toneMappingExposure = 0.36 + (1 - day) * 0.2;
 
     fogCol.copy(cNight).lerp(cDay, day).lerp(cSet, sunset * 0.55 * Math.max(day, 0.3));
@@ -638,9 +650,10 @@ async function start(name, Q) {
       camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
     } else {
       streamChunks(player.pos.x, player.pos.z, dt, MOBILE ? 5 : 7);
-      updatePlayer(dt);
+      if (!rpg.inBattle) updatePlayer(dt);
       camera.getWorldDirection(lookDir);
       target = world.raycast(eye, lookDir, MOBILE ? 5.5 : 6);
+      if (rpg.inBattle) target = null;
       highlight.visible = !!target;
       if (target) {
         const [x, y, z] = target.hit;
@@ -658,7 +671,7 @@ async function start(name, Q) {
     }
     updateEnvironment(dt, eye);
     updateParticles(dt);
-    if (ready) { mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); }
+    if (ready) { mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); rpg.update(dt); rpg.update3DHero(dt); }
     updateFx(dt);
     for (const a of avatars.values()) a.update(dt);
 
@@ -673,5 +686,5 @@ async function start(name, Q) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__vx = { world, player, controls, camera, hacks, mobs, explode, get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
+  window.__vx = { world, player, controls, camera, hacks, mobs, explode, rpg, get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
 }
