@@ -71,3 +71,24 @@ select option { background: #13223a; }
   .slot { width: min(42px, 10vw); height: min(42px, 10vw); } .slot img { width: 80%; height: 80%; } .slot span { display: none; }
   #chatlog { bottom: 180px; font-size: 12px; }
 }
+
+/* hacks */
+#hack-btn { position: absolute; right: calc(10px + env(safe-area-inset-right)); top: calc(44px + env(safe-area-inset-top)); pointer-events: auto;
+  font: 600 13px system-ui; color: #fff; padding: 7px 11px; border-radius: 10px; border: 1px solid rgba(255,220,120,.4);
+  background: linear-gradient(180deg, rgba(255,190,60,.35), rgba(200,90,20,.35)); backdrop-filter: blur(6px); cursor: pointer; }
+kbd { font: 600 10px ui-monospace, monospace; padding: 1px 5px; margin-left: 6px; border-radius: 4px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.2); }
+#active-hacks { position: absolute; right: calc(12px + env(safe-area-inset-right)); top: calc(84px + env(safe-area-inset-top)); font-size: 18px; letter-spacing: 2px; }
+#hacks { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(4,8,16,.45); backdrop-filter: blur(3px); z-index: 5; }
+.hk-card { width: min(560px, 100%); max-height: 100%; overflow: auto; padding: 18px; border-radius: 18px; background: rgba(18,24,38,.88);
+  border: 1px solid rgba(255,255,255,.12); box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+.hk-head { display: flex; justify-content: space-between; align-items: center; font-size: 20px; margin-bottom: 12px; }
+.hk-x { background: none; border: 0; color: #fff; font-size: 20px; cursor: pointer; }
+.hk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.hk { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; cursor: pointer; text-align: left;
+  font: 500 14px system-ui; color: #fff; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+.hk span { font-size: 18px; } .hk kbd { margin-left: auto; }
+.hk.on { background: linear-gradient(180deg, rgba(110,230,150,.35), rgba(40,160,90,.35)); border-color: rgba(140,255,170,.6); }
+.hk-act .hk { background: rgba(255,140,60,.14); border-color: rgba(255,170,90,.35); }
+.hk-act .hk:active, .hk:active { transform: translateY(1px); }
+.hk-time { margin: 14px 0; } .hk-time input { width: 100%; padding: 0; }
+.hk-tip { margin: 10px 0 0; font-size: 12px; opacity: .6; }

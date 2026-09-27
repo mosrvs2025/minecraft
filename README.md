@@ -52,6 +52,21 @@ keep WebSocket connections open.
 | Place | Right click | Tap or ▣ |
 | Select block | 1–9 / mouse wheel | Tap the hotbar |
 | Chat | T / Enter | 💬 |
+| Hacks menu | H (N = noclip, X = X-ray) | ⚡ Hacks |
+
+## Hacks and animals
+
+Open the **Hacks** menu with H or the ⚡ button:
+
+- **Movement:** Fly (✈️ button on mobile), Speed ×3, Super jump, Moon gravity, Noclip (fly through walls)
+- **Vision:** X-ray (only ores and TNT are drawn), Fullbright, a time-of-day slider, Freeze time
+- **Destruction:** Nuker (breaks a 3-block radius), Explosive punch, **TNT rain**. Punch a TNT block to light it; explosions set off nearby TNT, knock back you and the animals, and shake the camera
+- **Building:** Big brush places 3×3×3 blocks at once
+- **Fun:** Animal rain, Launch me
+
+Pigs, cows, sheep and chickens spawn in herds on grass. They wander, hop up ledges, swim, and panic when hit;
+chickens flutter down slowly. Explosions and big edits are synced in multiplayer, but animals and lit TNT only exist on
+your own screen.
 
 ## Graphics
 
@@ -61,6 +76,7 @@ keep WebSocket connections open.
 - Sun **shadow maps** that follow the player
 - Translucent, reflective **water** with two scrolling normal layers and vertex waves; underwater fog
 - **Wind-swayed** leaves, grass and flowers; block-break particles; head bob; sprint FOV
+- Coal, iron, gold and diamond ores underground
 - Quality presets: **Low** (phones), **Medium** (larger shadow map, longer view distance), **High** (longer view distance + GTAO)
 
 ## Architecture

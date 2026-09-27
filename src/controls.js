@@ -1,10 +1,10 @@
 // Unified desktop (pointer lock + keyboard) and mobile (joystick + touch look + buttons) input.
 export class Controls {
-  constructor(canvas, { mobile, onBreak, onPlace, onSelect, onFlyToggle, onChat }) {
+  constructor(canvas, { mobile, onBreak, onPlace, onSelect, onFlyToggle, onChat, onKey }) {
     this.canvas = canvas; this.mobile = mobile;
     this.yaw = 0; this.pitch = 0;
     this.move = { f: 0, r: 0 }; this.jump = false; this.down = false; this.sprint = false;
-    this.cb = { onBreak, onPlace, onSelect, onFlyToggle, onChat };
+    this.cb = { onBreak, onPlace, onSelect, onFlyToggle, onChat, onKey };
     this.breakHeld = false; this.placeHeld = false; this.repeat = 0;
     this.enabled = true; this.sens = 1;
     this.keys = new Set();
@@ -38,6 +38,7 @@ export class Controls {
         lastSpace = now;
       }
       if (e.code === 'KeyF' && !e.repeat) this.cb.onFlyToggle();
+      if (['KeyH', 'KeyN', 'KeyX'].includes(e.code) && !e.repeat) this.cb.onKey?.(e.code);
       if ((e.code === 'KeyT' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); this.cb.onChat(); return; }
       if (/^Digit[1-9]$/.test(e.code)) this.cb.onSelect(Number(e.code.slice(5)) - 1, false);
       this.keys.add(e.code);

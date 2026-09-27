@@ -94,6 +94,15 @@ wss.on('connection', (ws) => {
         broadcast({ t: 'block', x, y, z, b }, id);
         break;
       }
+      case 'blocks': { // batched edits (explosions, nuker); fx = optional explosion position
+        if (!Array.isArray(m.list) || m.list.length > 4096) return;
+        const list = m.list.filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isInteger) && e[1] >= 0 && e[1] <= 127 && e[3] >= 0 && e[3] <= 63);
+        for (const [x, y, z, b] of list) edits.set(`${x},${y},${z}`, b);
+        dirty = true;
+        const fx = Array.isArray(m.fx) && m.fx.length === 4 && m.fx.every(isNum) ? m.fx : undefined;
+        broadcast({ t: 'blocks', list, fx }, id);
+        break;
+      }
       case 'chat': {
         const text = clean(m.text, 200);
         if (text) broadcast({ t: 'chat', from: me.name, text });

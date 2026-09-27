@@ -4,13 +4,15 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { B, BLOCKS, HOTBAR, CS, CH, SEA } from './blocks.js';
+import { B, BLOCKS, HOTBAR, TILE, CS, CH, SEA } from './blocks.js';
 import { World, chunkKey } from './world.js';
 import { meshChunk } from './mesher.js';
-import { buildAtlas, makeIcon, makeWaterNormal } from './textures.js';
+import { buildAtlas, makeIcon, makeWaterNormal, tileUV } from './textures.js';
 import { Controls } from './controls.js';
 import { Net } from './net.js';
 import { Avatar } from './avatar.js';
+import { Mobs } from './mobs.js';
+import { Hacks } from './hacks.js';
 
 const $ = (id) => document.getElementById(id);
 const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -215,6 +217,7 @@ async function start(name, Q) {
     return false;
   }
   function moveAxis(axis, d) {
+    if (hacks.state.noclip) { player.pos[axis] += d; return false; }
     const p = player.pos, steps = Math.ceil(Math.abs(d) / 0.4) || 1, s = d / steps;
     for (let i = 0; i < steps; i++) {
       p[axis] += s;
@@ -292,8 +295,33 @@ async function start(name, Q) {
     if (local) net.send({ t: 'block', x, y, z, b: id });
   }
   function doBreak() {
+    const reach = MOBILE ? 5.5 : 6;
+    const mh = mobs.raycast(camera.position, lookDir, reach);
+    const blockDist = target ? camera.position.distanceTo(tmpV.set(target.hit[0] + 0.5, target.hit[1] + 0.5, target.hit[2] + 0.5)) - 0.5 : Infinity;
+    if (mh && mh.dist < blockDist) {
+      swing = 1;
+      if (hacks.state.boom) { explode(mh.mob.pos.x, mh.mob.pos.y + 0.5, mh.mob.pos.z, 3.5); return; }
+      const m = mh.mob;
+      if (mobs.hit(m, lookDir, hacks.state.speed ? 25 : 9)) { mobPoof(m); }
+      return;
+    }
     if (!target) return;
     const [x, y, z] = target.hit;
+    swing = 1;
+    if (hacks.state.boom) { explode(x + 0.5, y + 0.5, z + 0.5, 3.5); return; }
+    if (hacks.state.nuker) {
+      const list = [];
+      for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) {
+        if (dx * dx + dy * dy + dz * dz > 10) continue;
+        const id = world.get(x + dx, y + dy, z + dz);
+        if (id === B.AIR || id === B.WATER) continue;
+        if (Math.random() < 0.15) burst(x + dx, y + dy, z + dz, id);
+        list.push([x + dx, y + dy, z + dz, B.AIR]);
+      }
+      applyBatch(list, null, true);
+      return;
+    }
+    if (target.id === B.TNT) { setBlock(x, y, z, B.AIR, true); primeTNT(x + 0.5, y, z + 0.5, 3); return; }
     burst(x, y, z, target.id);
     setBlock(x, y, z, B.AIR, true);
     if (BLOCKS[world.get(x, y + 1, z)].kind === 'plant') setBlock(x, y + 1, z, B.AIR, true);
@@ -306,8 +334,109 @@ async function start(name, Q) {
     if (cur !== B.AIR && cur !== B.WATER && BLOCKS[cur].kind !== 'plant') return;
     const p = player.pos;
     if (x + 1 > p.x - PW && x < p.x + PW && y + 1 > p.y && y < p.y + PH && z + 1 > p.z - PW && z < p.z + PW) return;
-    setBlock(x, y, z, HOTBAR[sel], true);
     swing = 1;
+    if (hacks.state.brush) {
+      const list = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        const bx = x + dx, by = y + dy, bz = z + dz, c = world.get(bx, by, bz);
+        if (c !== B.AIR && c !== B.WATER && BLOCKS[c].kind !== 'plant') continue;
+        if (bx + 1 > p.x - PW && bx < p.x + PW && by + 1 > p.y && by < p.y + PH && bz + 1 > p.z - PW && bz < p.z + PW) continue;
+        list.push([bx, by, bz, HOTBAR[sel]]);
+      }
+      applyBatch(list, null, true);
+      return;
+    }
+    setBlock(x, y, z, HOTBAR[sel], true);
+  }
+
+  function applyBatch(list, fx, local) {
+    const dirty = new Set();
+    for (const [x, y, z, b] of list) for (const c of world.set(x, y, z, b)) dirty.add(c);
+    remeshNow(dirty);
+    if (local && list.length) {
+      for (let i = 0; i < list.length; i += 4000) net.send({ t: 'blocks', list: list.slice(i, i + 4000), fx: i === 0 && fx ? fx : undefined });
+    }
+  }
+
+  // ---- TNT & explosions -------------------------------------------------------------------------------
+  const tntTex = (tile) => { const t = atlas.map.clone(); const [u0, v0, u1, v1] = tileUV(tile); t.offset.set(u0, v0); t.repeat.set(u1 - u0, v1 - v0); t.needsUpdate = true; return t; };
+  const sideT = tntTex(TILE.TNT_SIDE), topT = tntTex(TILE.TNT_TOP);
+  const tntGeo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+  const tnts = [];
+  function primeTNT(x, y, z, fuse, vel) {
+    const ms = [sideT, sideT, topT, topT, sideT, sideT].map((map) => new THREE.MeshStandardMaterial({ map, emissive: 0xffffff, emissiveIntensity: 0 }));
+    const mesh = new THREE.Mesh(tntGeo, ms); mesh.castShadow = true;
+    const t = { mesh, pos: new THREE.Vector3(x, y, z), vel: vel ?? new THREE.Vector3(0, 4, 0), fuse };
+    mesh.position.copy(t.pos).y += 0.49; scene.add(mesh); tnts.push(t);
+  }
+  function updateTNT(dt) {
+    for (const t of [...tnts]) {
+      t.fuse -= dt;
+      t.vel.y = Math.max(-40, t.vel.y - 26 * dt);
+      t.pos.addScaledVector(t.vel, dt);
+      if (world.isSolid(Math.floor(t.pos.x), Math.floor(t.pos.y), Math.floor(t.pos.z))) { t.pos.y = Math.floor(t.pos.y) + 1; t.vel.set(0, 0, 0); }
+      t.mesh.position.copy(t.pos).y += 0.49;
+      const flash = Math.floor(t.fuse * 5) % 2 === 0 ? 0.9 : 0;
+      for (const m of t.mesh.material) m.emissiveIntensity = flash;
+      t.mesh.scale.setScalar(1 + (t.fuse < 0.5 ? (0.5 - t.fuse) * 0.4 : 0));
+      if (t.fuse <= 0) {
+        scene.remove(t.mesh); t.mesh.material.forEach((m) => m.dispose()); tnts.splice(tnts.indexOf(t), 1);
+        explode(t.pos.x, t.pos.y + 0.5, t.pos.z, 4);
+      }
+    }
+  }
+
+  const fxList = [];
+  const fireGeo = new THREE.IcosahedronGeometry(1, 2);
+  const boomLight = new THREE.PointLight(0xffa040, 0, 40, 1.5); scene.add(boomLight);
+  let shake = 0;
+  function explosionFx(x, y, z, r) {
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(fireGeo, new THREE.MeshBasicMaterial({ color: i ? 0x666058 : 0xffb347, transparent: true, depthWrite: false, fog: false }));
+      m.position.set(x + (Math.random() - 0.5) * r * 0.5, y + (Math.random() - 0.5) * r * 0.5, z + (Math.random() - 0.5) * r * 0.5);
+      scene.add(m); fxList.push({ m, t: 0, dur: i ? 1.2 : 0.45, r: r * (i ? 1.1 : 1.4) });
+    }
+    boomLight.position.set(x, y + 1, z); boomLight.intensity = 400;
+    const d = camera.position.distanceTo(tmpV.set(x, y, z));
+    shake = Math.max(shake, Math.max(0, 1 - d / (r * 8)));
+  }
+  function updateFx(dt) {
+    for (const f of [...fxList]) {
+      f.t += dt; const k = f.t / f.dur;
+      f.m.scale.setScalar(f.r * (0.3 + Math.sqrt(k) * 0.9));
+      f.m.material.opacity = Math.max(0, 1 - k) * 0.85;
+      if (f.dur > 1) f.m.position.y += dt * 2;
+      if (k >= 1) { scene.remove(f.m); f.m.material.dispose(); fxList.splice(fxList.indexOf(f), 1); }
+    }
+    boomLight.intensity *= Math.exp(-dt * 10);
+    shake = Math.max(0, shake - dt * 1.8);
+  }
+  function explode(x, y, z, r) {
+    const list = [], cx = Math.floor(x), cy = Math.floor(y), cz = Math.floor(z), R = Math.ceil(r);
+    let bursts = 0;
+    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) for (let dz = -R; dz <= R; dz++) {
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) > r - Math.random() * 1.2) continue;
+      const bx = cx + dx, by = cy + dy, bz = cz + dz, id = world.get(bx, by, bz);
+      if (id === B.AIR || id === B.WATER || by < 1) continue;
+      if (id === B.TNT) {
+        const v = new THREE.Vector3(dx, 2, dz).normalize().multiplyScalar(7);
+        primeTNT(bx + 0.5, by, bz + 0.5, 0.4 + Math.random() * 0.8, v);
+      } else if (bursts < 10 && Math.random() < 0.2) { burst(bx, by, bz, id); bursts++; }
+      list.push([bx, by, bz, B.AIR]);
+    }
+    applyBatch(list, [x, y, z, r], true);
+    explosionFx(x, y, z, r);
+    mobs.blast(tmpV.set(x, y, z), r);
+    const d = player.pos.clone().add(new THREE.Vector3(0, 0.9, 0)).sub(new THREE.Vector3(x, y, z));
+    const dist = d.length();
+    if (dist < r * 2.5 && !hacks.state.noclip) {
+      const k = (1 - dist / (r * 2.5)) * 28;
+      player.vel.addScaledVector(d.normalize(), k); player.vel.y += k * 0.4;
+    }
+  }
+  function mobPoof(m) {
+    for (let i = 0; i < 3; i++) burst(m.pos.x - 0.5, m.pos.y + i * 0.3, m.pos.z - 0.5, B.FLOWER);
+    mobs.remove(m);
   }
 
   // ---- chat -----------------------------------------------------------------------------------------
@@ -334,8 +463,43 @@ async function start(name, Q) {
 
   const controls = new Controls(renderer.domElement, {
     mobile: MOBILE, onBreak: doBreak, onPlace: doPlace, onSelect: select, onChat: openChat,
-    onFlyToggle: () => { player.fly = !player.fly; player.vel.y = 0; $('b-down').hidden = !player.fly; chatLine('', player.fly ? 'Flying enabled' : 'Flying disabled'); },
+    onFlyToggle: () => hacks.toggle('fly'),
+    onKey: (code) => {
+      if (code === 'KeyH') hacks.open ? hacks.close() : openHacks();
+      if (code === 'KeyN') hacks.toggle('noclip');
+      if (code === 'KeyX') hacks.toggle('xray');
+    },
   });
+
+  const mobs = new Mobs(scene, world);
+  const hacks = new Hacks({
+    onToggle: (k, v) => {
+      if (k === 'fly') { player.fly = v; player.vel.y = 0; $('b-down').hidden = !v; }
+      if (k === 'noclip' && v && !hacks.state.fly) hacks.set('fly', true);
+      if (k === 'fly' && !v && hacks.state.noclip) hacks.set('noclip', false);
+      if (k === 'xray') { world.xray = v; for (const c of world.chunks.values()) c.dirty = true; }
+      const names = { fly: 'Flying', speed: 'Speed', jump: 'Super jump', moon: 'Moon gravity', noclip: 'Noclip', xray: 'X-ray', fullbright: 'Fullbright', nuker: 'Nuker', boom: 'Explosive punch', brush: 'Big brush', freeze: 'Time freeze', mobs: 'Animal spawning' };
+      chatLine('', `${names[k]} ${v ? 'ON' : 'OFF'}`);
+    },
+    onAction: (a) => {
+      const p = player.pos;
+      if (a === 'tntRain') for (let i = 0; i < 12; i++) primeTNT(p.x + (Math.random() - 0.5) * 30, p.y + 25 + Math.random() * 15, p.z + (Math.random() - 0.5) * 30, 2.5 + Math.random() * 2.5, new THREE.Vector3());
+      if (a === 'animalRain') mobs.rain(p);
+      if (a === 'launch') { if (hacks.state.fly) hacks.set('fly', false); player.vel.y = hacks.state.moon ? 25 : 45; }
+      hacks.close();
+    },
+    onTime: (min) => { timeOfDay = ((min - 360) / 1440) * DAY; },
+    onClose: () => { controls.enabled = true; if (!MOBILE && !controls.locked) renderer.domElement.requestPointerLock?.(); },
+  });
+  function openHacks() {
+    controls.enabled = false; document.exitPointerLock?.();
+    controls.breakHeld = controls.placeHeld = false;
+    const dayMin = (((timeOfDay / DAY) * 1440 + 360) % 1440 + 1440) % 1440;
+    hacks.show(dayMin);
+  }
+  const tapBtn = (id, fn) => { const el = $(id); el.addEventListener('click', fn); el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false }); };
+  tapBtn('hack-btn', openHacks);
+  tapBtn('b-fly', () => hacks.toggle('fly'));
   $('b-down').hidden = true;
   document.addEventListener('pointerlockchange', () => { $('hint').hidden = controls.locked || MOBILE || !chatIn.hidden; });
   $('hint').hidden = MOBILE;
@@ -357,18 +521,22 @@ async function start(name, Q) {
     if (m.b === B.AIR && old !== B.AIR && world.getChunk(Math.floor(m.x / CS), Math.floor(m.z / CS))) burst(m.x, m.y, m.z, old);
     setBlock(m.x, m.y, m.z, m.b, false);
   });
+  net.on('blocks', (m) => {
+    applyBatch(m.list, null, false);
+    if (m.fx) { explosionFx(m.fx[0], m.fx[1], m.fx[2], m.fx[3]); mobs.blast(new THREE.Vector3(m.fx[0], m.fx[1], m.fx[2]), m.fx[3]); }
+  });
   net.on('chat', (m) => chatLine(m.from, m.text));
   net.on('disconnect', () => { chatLine('', 'Disconnected from server.'); updateCount(); });
   updateCount();
 
   // ---- environment update --------------------------------------------------------------------------------
-  const sunDir = new THREE.Vector3(), tmpV = new THREE.Vector3();
+  const sunDir = new THREE.Vector3(), tmpV = new THREE.Vector3(), xrayBg = new THREE.Color(0x05060a);
   const cNight = new THREE.Color(0x05080f), cDay = new THREE.Color(0x8fb4d8), cSet = new THREE.Color(0xf2a36b), cWater = new THREE.Color(0x0d3550);
   const fogCol = new THREE.Color();
   let timeOfDay = (welcome?.time ?? 0) + DAY * 0.1;
 
   function updateEnvironment(dt, eye) {
-    timeOfDay += dt;
+    if (!hacks.state.freeze) timeOfDay += dt;
     const a = (timeOfDay / DAY) * Math.PI * 2;
     sunDir.set(Math.cos(a), Math.sin(a), 0.35).normalize();
     su.sunPosition.value.copy(sunDir);
@@ -391,6 +559,11 @@ async function start(name, Q) {
     if (underwater) { scene.fog.color.copy(cWater).multiplyScalar(0.3 + day * 0.7); scene.fog.near = 0.5; scene.fog.far = 22; }
     else { scene.fog.color.copy(fogCol); scene.fog.near = Q.rd * CS * 0.45; scene.fog.far = Q.rd * CS * 0.98; }
     $('app').classList.toggle('underwater', underwater);
+    if (hacks.state.fullbright || hacks.state.xray) {
+      hemi.intensity = 1.1; hemi.color.setRGB(1, 1, 1); scene.environmentIntensity = 0.6; renderer.toneMappingExposure = 0.5;
+    }
+    if (hacks.state.xray) { scene.fog.color.setRGB(0.02, 0.02, 0.04); scene.fog.near = 20; scene.fog.far = Q.rd * CS * 1.2; }
+    sky.visible = !hacks.state.xray; scene.background = hacks.state.xray ? xrayBg : null;
 
     sky.position.copy(eye); stars.position.copy(eye);
     stars.material.opacity = Math.max(0, 1 - day * 1.6);
@@ -417,12 +590,13 @@ async function start(name, Q) {
     const wx = fwd.x * c.move.f + Math.cos(c.yaw) * c.move.r, wz = fwd.z * c.move.f - Math.sin(c.yaw) * c.move.r;
     const wl = Math.hypot(wx, wz), nx = wl > 1 ? wx / wl : wx, nz = wl > 1 ? wz / wl : wz;
     p.inWater = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.4), Math.floor(p.pos.z)) === B.WATER;
-    const speed = p.fly ? (c.sprint ? 22 : 11) : p.inWater ? 3.2 : c.sprint ? 6.4 : 4.4;
+    const speed = (p.fly ? (c.sprint ? 22 : 11) : p.inWater ? 3.2 : c.sprint ? 6.4 : 4.4) * (hacks.state.speed ? 3 : 1);
+    const grav = hacks.state.moon ? 6 : 28, jumpV = hacks.state.jump ? 18 : 8.7;
     const acc = 1 - Math.exp(-dt * (p.onGround || p.fly ? 14 : p.inWater ? 5 : 3.5));
     p.vel.x += (nx * speed - p.vel.x) * acc; p.vel.z += (nz * speed - p.vel.z) * acc;
     if (p.fly) p.vel.y += (((c.jump ? 1 : 0) - (c.down ? 1 : 0)) * speed - p.vel.y) * acc;
-    else if (p.inWater) { p.vel.y -= 9 * dt; p.vel.y *= 1 - 2.5 * dt; if (c.jump) p.vel.y = Math.min(p.vel.y + 24 * dt, 3.5); }
-    else { p.vel.y = Math.max(-55, p.vel.y - 28 * dt); if (c.jump && p.onGround) p.vel.y = 8.7; }
+    else if (p.inWater) { p.vel.y -= grav * 0.32 * dt; p.vel.y *= 1 - 2.5 * dt; if (c.jump) p.vel.y = Math.min(p.vel.y + 24 * dt, 3.5); }
+    else { p.vel.y = Math.max(-55, p.vel.y - grav * dt); if (c.jump && p.onGround) p.vel.y = jumpV; }
 
     const hitX = moveAxis('x', p.vel.x * dt); if (hitX) p.vel.x = 0;
     const hitZ = moveAxis('z', p.vel.z * dt); if (hitZ) p.vel.z = 0;
@@ -430,17 +604,17 @@ async function start(name, Q) {
     const hitY = moveAxis('y', p.vel.y * dt);
     p.onGround = hitY && falling;
     if (hitY) p.vel.y = 0;
-    if (p.onGround && p.fly) p.fly = false, $('b-down').hidden = true;
     // mobile auto-jump when walking into a 1-block step
     if (MOBILE && (hitX || hitZ) && p.onGround && wl > 0.3) {
       const fx = Math.floor(p.pos.x + nx * 0.6), fz = Math.floor(p.pos.z + nz * 0.6), fy = Math.floor(p.pos.y);
-      if (world.isSolid(fx, fy, fz) && !world.isSolid(fx, fy + 1, fz) && !world.isSolid(fx, fy + 2, fz)) p.vel.y = 8.7;
+      if (world.isSolid(fx, fy, fz) && !world.isSolid(fx, fy + 1, fz) && !world.isSolid(fx, fy + 2, fz)) p.vel.y = Math.max(jumpV, 8.7);
     }
     if (p.pos.y < -20) { p.pos.set(...spawn); p.vel.set(0, 0, 0); }
 
     const hs = Math.hypot(p.vel.x, p.vel.z);
     if (p.onGround && hs > 0.5) { p.bob += dt * hs * 1.9; walked += hs * dt; } else p.bob *= 1 - dt * 6;
     camera.position.set(p.pos.x, p.pos.y + EYE + Math.abs(Math.sin(p.bob)) * 0.06, p.pos.z);
+    if (shake > 0) camera.position.add(tmpV.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 0.5));
     camera.rotation.set(c.pitch, c.yaw, Math.sin(p.bob) * 0.004);
     const fov = 72 + (c.sprint && hs > 5 ? 8 : 0) + (p.fly && hs > 12 ? 6 : 0);
     if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 8)); camera.updateProjectionMatrix(); }
@@ -484,6 +658,8 @@ async function start(name, Q) {
     }
     updateEnvironment(dt, eye);
     updateParticles(dt);
+    if (ready) { mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); }
+    updateFx(dt);
     for (const a of avatars.values()) a.update(dt);
 
     composer ? composer.render(dt) : renderer.render(scene, camera);
@@ -497,5 +673,5 @@ async function start(name, Q) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__vx = { world, player, controls, camera, get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
+  window.__vx = { world, player, controls, camera, hacks, mobs, explode, get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
 }

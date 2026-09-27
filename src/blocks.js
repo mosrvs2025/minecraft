@@ -5,11 +5,13 @@ export const SEA = 36;  // sea level
 export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5, LOG: 6, LEAVES: 7,
   PLANKS: 8, GLASS: 9, COBBLE: 10, SNOW: 11, TALLGRASS: 12, FLOWER: 13, BRICK: 14,
+  COAL_ORE: 15, IRON_ORE: 16, GOLD_ORE: 17, DIAMOND_ORE: 18, TNT: 19,
 };
 
 export const TILE = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, SAND: 4, LOG_SIDE: 5, LOG_TOP: 6, LEAVES: 7,
   PLANKS: 8, GLASS: 9, COBBLE: 10, SNOW: 11, SNOW_SIDE: 12, TALLGRASS: 13, FLOWER: 14, BRICK: 15,
+  COAL: 16, IRON: 17, GOLD: 18, DIAMOND: 19, TNT_SIDE: 20, TNT_TOP: 21,
 };
 
 // kind: 'air' | 'cube' | 'water' | 'plant'
@@ -34,4 +36,13 @@ BLOCKS[B.TALLGRASS] = { name: 'Tall grass', kind: 'plant', tile: TILE.TALLGRASS,
 BLOCKS[B.FLOWER] = { name: 'Poppy', kind: 'plant', tile: TILE.FLOWER, solid: false, opaque: false, ao: false };
 BLOCKS[B.BRICK] = cube('Bricks', TILE.BRICK, TILE.BRICK, TILE.BRICK);
 
-export const HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.COBBLE, B.PLANKS, B.LOG, B.BRICK, B.GLASS, B.LEAVES];
+BLOCKS[B.COAL_ORE] = cube('Coal ore', TILE.COAL, TILE.COAL, TILE.COAL);
+BLOCKS[B.IRON_ORE] = cube('Iron ore', TILE.IRON, TILE.IRON, TILE.IRON);
+BLOCKS[B.GOLD_ORE] = cube('Gold ore', TILE.GOLD, TILE.GOLD, TILE.GOLD);
+BLOCKS[B.DIAMOND_ORE] = cube('Diamond ore', TILE.DIAMOND, TILE.DIAMOND, TILE.DIAMOND);
+BLOCKS[B.TNT] = cube('TNT', TILE.TNT_TOP, TILE.TNT_TOP, TILE.TNT_SIDE);
+
+export const HOTBAR = [B.GRASS, B.STONE, B.COBBLE, B.PLANKS, B.LOG, B.BRICK, B.GLASS, B.LEAVES, B.TNT];
+
+// blocks still drawn while X-ray is on
+export const XRAY_SHOW = new Set([B.COAL_ORE, B.IRON_ORE, B.GOLD_ORE, B.DIAMOND_ORE, B.TNT]);

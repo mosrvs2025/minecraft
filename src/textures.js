@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { TILE, BLOCKS } from './blocks.js';
 
-const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 4;
+const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 6;
 const W = CELL * COLS, H = CELL * ROWS;
 
 export function tileUV(tile) {
@@ -148,11 +148,49 @@ P.flower = (u, v) => {
   return [0.3, 0.5, 0.2, 0, 0];
 };
 
+const ore = (col, seed, size) => (u, v) => {
+  const [d1, , id] = voronoi(u, v, 4, seed);
+  const r = size * (0.6 + hi(id, 5, seed) * 0.6);
+  if (hi(id, 6, seed) < 0.75 && d1 < r) {
+    const k = 0.75 + (1 - d1 / r) * 0.45 + (px(u, v, seed) - 0.5) * 0.2;
+    return [...sc(col, k), 1, 0.9 - d1 / r * 0.3];
+  }
+  return P.stone(u, v);
+};
+P.coal = ore([0.12, 0.12, 0.13], 131, 0.17);
+P.iron = ore([0.85, 0.62, 0.45], 133, 0.17);
+P.gold = ore([1, 0.84, 0.22], 135, 0.17);
+P.diamond = ore([0.35, 1, 0.95], 137, 0.17);
+const FONT = { T: ['111', '010', '010', '010', '010'], N: ['1001', '1101', '1011', '1001', '1001'] };
+P.tntSide = (u, v) => {
+  const n = fbm(u, v, 8, 8, 2, 141);
+  if (v > 0.3 && v < 0.7) {
+    const S = 3, x = Math.floor(u * T), y = Math.floor(v * T) - 25;
+    let gx = 14;
+    for (const ch of 'TNT') {
+      const g = FONT[ch], w = g[0].length * S;
+      if (x >= gx && x < gx + w && y >= 0 && y < 5 * S && g[Math.floor(y / S)][Math.floor((x - gx) / S)] === '1') return [0.12, 0.12, 0.12, 1, 0.2];
+      gx += w + S;
+    }
+    return [...sc([0.93, 0.92, 0.88], 0.9 + n * 0.1), 1, 0.6];
+  }
+  const stripe = Math.floor(u * 8) % 2;
+  return [...sc([0.78, 0.16, 0.12], 0.8 + n * 0.25 - stripe * 0.12), 1, 0.4 + stripe * 0.2];
+};
+P.tntTop = (u, v) => {
+  const d = Math.hypot(u - 0.5, v - 0.5), n = fbm(u, v, 8, 8, 2, 143);
+  if (d < 0.09) return [0.15, 0.13, 0.12, 1, 0];
+  if (d < 0.14) return [0.55, 0.5, 0.45, 1, 0.3];
+  return [...sc([0.8, 0.2, 0.15], 0.8 + n * 0.25), 1, 0.5];
+};
+
 const PAINT = {
   [TILE.GRASS_TOP]: P.grass, [TILE.GRASS_SIDE]: P.grassSide, [TILE.DIRT]: P.dirt, [TILE.STONE]: P.stone,
   [TILE.SAND]: P.sand, [TILE.LOG_SIDE]: P.logSide, [TILE.LOG_TOP]: P.logTop, [TILE.LEAVES]: P.leaves,
   [TILE.PLANKS]: P.planks, [TILE.GLASS]: P.glass, [TILE.COBBLE]: P.cobble, [TILE.SNOW]: P.snow,
   [TILE.SNOW_SIDE]: P.snowSide, [TILE.TALLGRASS]: P.tallgrass, [TILE.FLOWER]: P.flower, [TILE.BRICK]: P.brick,
+  [TILE.COAL]: P.coal, [TILE.IRON]: P.iron, [TILE.GOLD]: P.gold, [TILE.DIAMOND]: P.diamond,
+  [TILE.TNT_SIDE]: P.tntSide, [TILE.TNT_TOP]: P.tntTop,
 };
 
 export function buildAtlas(anisotropy = 4) {
@@ -160,7 +198,8 @@ export function buildAtlas(anisotropy = 4) {
   const normal = document.createElement('canvas'); normal.width = W; normal.height = H;
   const ci = color.getContext('2d').createImageData(W, H), ni = normal.getContext('2d').createImageData(W, H);
   const avg = [];
-  for (let tile = 0; tile < 16; tile++) {
+  for (let tile = 0; tile < COLS * ROWS; tile++) {
+    if (!PAINT[tile]) continue;
     const paint = PAINT[tile];
     const px = new Array(T * T);
     for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) px[x + y * T] = paint((x + 0.5) / T, (y + 0.5) / T);

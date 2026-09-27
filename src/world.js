@@ -96,6 +96,16 @@ export class World {
         let id = B.AIR;
         if (y <= h) {
           id = y < h - 3 ? B.STONE : y < h ? sub : top;
+          if (id === B.STONE && y < h - 4) {
+            // ores come in small clusters: pick 2x2x2 cells, then fill most of the cell
+            const cell = hash3(x >> 1, y >> 1, z >> 1), fill = hash3(x, y, z) < 0.6;
+            if (fill) {
+              if (y < 16 && cell < 0.0035) id = B.DIAMOND_ORE;
+              else if (y < 30 && cell < 0.004) id = B.GOLD_ORE;
+              else if (y < 60 && cell < 0.009) id = B.IRON_ORE;
+              else if (cell < 0.012) id = B.COAL_ORE;
+            }
+          }
           if (y > 3 && y < h - (under ? 6 : 0)) {
             const a = n.s3(x * 0.045, y * 0.07, z * 0.045), b = n.s3(x * 0.045 + 71, y * 0.07, z * 0.045 - 33);
             if (a * a + b * b < 0.009) id = B.AIR;
