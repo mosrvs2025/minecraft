@@ -53,6 +53,56 @@ keep WebSocket connections open.
 | Select block | 1–9 / mouse wheel | Tap the hotbar |
 | Chat | T / Enter | 💬 |
 | Hacks menu | H (N = noclip, X = X-ray) | ⚡ Hacks |
+| Inventory | I | 🎒 |
+| Ride / dismount a vehicle | R | 🚗 |
+| Fire ranged weapon (TNT Blaster) | G | 🎯 |
+
+## Worlds, creatures, weapons & vehicles
+
+### Three realms
+Walk through an **Ancient Portal** (two are always within ~350 blocks of spawn; the compass shows them once found):
+
+| Realm | How to get in | What's there |
+| --- | --- | --- |
+| 🌍 Overworld | — | Everything below, plus volcanoes, fossil sites, coral reefs with fish, sharks in deep water |
+| 🦖 Primeval Realm | Bone portal (needs **3 fossils**) | Jungle with giant trees, frequent volcanoes, raptor packs, T-Rexes, pterodactyl flocks, rideable brontosaurus herds |
+| 🐉 Dragon Isles | Obsidian portal (needs the **Spore Crown** or **Lv 8**) | Floating islands over an endless sea, crystal veins, wyrmlings, and **Elder Dragons** sleeping on obsidian spires |
+
+Realms are far-off regions of the same world, so multiplayer, block edits and saving work everywhere. Each has its own
+fog colour and difficulty.
+
+### Volcanoes, fossils, oceans
+- **Volcanoes**: basalt cones with lava craters and lava rivers. They smoke constantly and erupt every so often: lava bombs
+  land as magma (and hurt). Lava and magma burn you; running out of HP sends you home.
+- **Fossil sites**: dinosaur skeletons half-buried in the ground. Mining bone or fossil stone gives **fossils**: 3
+  open the bone portal, and 6 become the **Fossil Club**.
+- **Oceans**: coral reefs, schools of fish that scatter when you swim through, and **sharks** that hunt swimmers.
+
+### Creatures
+| Creature | Where | |
+| --- | --- | --- |
+| Raptor | Primeval | Hunts in packs of 3 (battle) |
+| T-Rex | Primeval | Huge; ROARs, then Mega Chomps, so guard it! Drops fossils |
+| Brontosaurus | Primeval | Peaceful herds. Walk up and press R to ride one |
+| Pterodactyl | Primeval sky | Ambient flocks |
+| Shark | Deep ocean | Battles you in the water |
+| Fish | Reefs | Ambient schools |
+| Wyrmling | Dragon Isles | Flying fire-spitters |
+| Elder Dragon | Dragon spires | Boss: Flamestorm (4 guards), Wing Buffet, summons wyrmlings. Beat it to **ride it** and get the Dragon Blade |
+| Distant dragon | Far overworld skies | A glimpse of the Dragon Isles |
+
+### Weapons (Inventory → Weapons)
+Wooden Sword (+3), Iron Sword (+7), Diamond Sword (+12, Excellents are more frequent), Fossil Club (+9, 30% stun),
+Dragon Blade (+18, burning hits, Fire Burst costs 1 FP), and the **TNT Blaster** (G fires TNT that explodes on impact).
+Your weapon is visible in your hand. Pip sells iron, diamond and the blaster; the club and blade are earned.
+
+### Vehicles (Inventory → Vehicles, then R to ride)
+Go-kart (fast, Shift for turbo, hops single blocks), Boat (water), Brontosaurus (Primeval), and the Elder Dragon (flies
+where you look; jump climbs, C dives). Ramming an enemy at speed starts a battle with a First Strike.
+
+### Inventory & building
+The **🎒 inventory (I)** shows every placeable block: 50+ including lava, water, magma, basalt, ice (slippery!), coral,
+lanterns, wool, gold and diamond blocks, mushroom caps (bouncy!) and home beacons. Click one to put it in the selected hotbar slot. Your hotbar is saved.
 
 ## Echoes & consequences: how the systems connect
 
@@ -169,6 +219,10 @@ src/landmarks.js   deterministic landmarks (starstones, vaults, geodes, sky isla
 src/rpg.js         enemies & ecology, terrain-aware battles, echoes, relics, items, bosses, progression
 src/discovery.js   landmark discovery, compass, starstone lore/waystones, rumors, frontiers, journal
 src/wonders.js     Pip the Peddler and the sky whale
+src/realms.js      realm offsets (Primeval, Dragon Isles) and local coordinates
+src/fauna.js       fish, pterodactyls, distant dragons, volcano smoke and eruptions
+src/vehicles.js    go-kart, boat, brontosaurus and dragon riding with a chase camera
+src/inventory.js   block palette, items, weapons, vehicles
 src/mesher.js      chunk meshing: face culling, AO, plants, water
 src/textures.js    procedural texture + normal atlas, hotbar icons, water normals
 src/controls.js    desktop + touch input

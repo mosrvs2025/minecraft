@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Avatar } from './avatar.js';
 import { B, BLOCKS, CS, CH, SEA } from './blocks.js';
 import { sitesNear } from './landmarks.js';
+import { REALMS, realmAt, toLocal } from './realms.js';
 
 const $ = (id) => document.getElementById(id);
 const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -41,6 +42,40 @@ function shroom(g, capColor, spotColor, glow) {
   return { feet: [-1, 1].map((s) => box(g, 0.24, 0.14, 0.34, 0x3a1e0c, s * 0.16, 0.07, -0.04)) };
 }
 
+function dino(g, body, dark, k, arms = false) {
+  const s = new THREE.Group(); s.scale.setScalar(k); g.add(s);
+  box(s, 0.55, 0.6, 1.2, body, 0, 1.2, 0);
+  for (let i = 0; i < 3; i++) box(s, 0.57, 0.08, 0.14, dark, 0, 1.45, -0.3 + i * 0.3);
+  const tail = new THREE.Group(); tail.position.set(0, 1.25, 0.6); s.add(tail);
+  box(tail, 0.34, 0.34, 0.8, body, 0, 0, 0.4); box(tail, 0.2, 0.2, 0.6, body, 0, 0.05, 0.95);
+  box(s, 0.34, 0.5, 0.3, body, 0, 1.55, -0.6);
+  const head = new THREE.Group(); head.position.set(0, 1.85, -0.75); s.add(head);
+  box(head, 0.42, 0.36, 0.7, body, 0, 0, -0.2);
+  box(head, 0.36, 0.08, 0.5, 0xffffff, 0, -0.16, -0.32);
+  for (const sd of [-1, 1]) box(head, 0.06, 0.1, 0.1, 0xffd000, sd * 0.2, 0.08, -0.25);
+  const feet = [-1, 1].map((sd) => box(s, 0.22, 0.95, 0.3, dark, sd * 0.22, 0.48, 0.1));
+  if (arms) for (const sd of [-1, 1]) box(s, 0.08, 0.25, 0.1, dark, sd * 0.3, 1.05, -0.5);
+  return { feet, tail, head };
+}
+function dragonModel(g, color, k, liftY, boss = false) {
+  const s = new THREE.Group(); s.scale.setScalar(k); g.add(s);
+  const glow = boss ? { emissive: 0x3b0f6e, emissiveIntensity: 0.4 } : {};
+  box(s, 0.7, 0.6, 1.4, color, 0, 0, 0, glow);
+  box(s, 0.66, 0.2, 1.2, 0xe0b060, 0, -0.3, 0);
+  box(s, 0.3, 0.3, 0.8, color, 0, 0.35, -0.9, glow);
+  const head = new THREE.Group(); head.position.set(0, 0.6, -1.4); s.add(head);
+  box(head, 0.5, 0.4, 0.7, color, 0, 0, 0, glow);
+  for (const sd of [-1, 1]) { cone(head, 0.06, 0.35, 0xf0e6c8, sd * 0.16, 0.35, 0.2).rotation.x = -0.6; box(head, 0.08, 0.08, 0.05, 0xffe600, sd * 0.2, 0.1, -0.35, { emissive: 0xffaa00, emissiveIntensity: 1.5 }); }
+  const tail = new THREE.Group(); tail.position.set(0, 0, 0.7); s.add(tail);
+  box(tail, 0.3, 0.3, 1.2, color, 0, 0, 0.6, glow); cone(tail, 0.2, 0.4, 0xf0e6c8, 0, 0, 1.3).rotation.x = Math.PI / 2;
+  const wings = [-1, 1].map((sd) => {
+    const w = new THREE.Group(); w.position.set(sd * 0.35, 0.25, -0.1); s.add(w);
+    box(w, 1.8, 0.05, 1.0, color, sd * 0.9, 0, 0, { transparent: true, opacity: 0.9, side: THREE.DoubleSide, ...glow });
+    return w;
+  });
+  return { wings, tail, head, lift: liftY };
+}
+
 // moves: what each enemy does, in order (loops). hits: [power multiplier, windup seconds]
 const MOVES = {
   bonk: { name: 'Headbonk', hits: [[1, 0.5]] },
@@ -55,6 +90,15 @@ const MOVES = {
   storm: { name: 'Spore Storm', hits: [[0.6, 0.45], [0.6, 0.32], [0.6, 0.28]] },
   summon: { name: 'Call the Grove', summon: true },
   stomp: { name: 'Earthshaker', hits: [[1.6, 0.75]] },
+  bite: { name: 'Bite', hits: [[1, 0.42]] },
+  pounce: { name: 'Pounce', hits: [[1.3, 0.55]] },
+  roar: { name: 'ROAR', charge: true },
+  chomp: { name: 'Mega Chomp', hits: [[2.4, 0.8]] },
+  thrash: { name: 'Thrash', hits: [[0.7, 0.35], [0.7, 0.3]] },
+  flame: { name: 'Flame Spit', hits: [[0.6, 0.4], [0.6, 0.3]] },
+  claw: { name: 'Claw', hits: [[1, 0.45]] },
+  flamestorm: { name: 'Flamestorm', hits: [[0.7, 0.45], [0.7, 0.35], [0.7, 0.3], [0.7, 0.26]] },
+  buffet: { name: 'Wing Buffet', hits: [[1.7, 0.7]] },
 };
 
 const ENEMIES = {
@@ -96,6 +140,35 @@ const ENEMIES = {
       return { feet: [-1, 1, -1, 1].map((s, i) => box(g, 0.08, 0.2, 0.08, 0x3b2766, s * 0.3, 0.1, i < 2 ? -0.15 : 0.15)) };
     },
   },
+  raptor: {
+    name: 'Raptor', hp: 16, atk: 8, def: 2, xp: 8, coins: [3, 8], speed: 4.2, moves: ['bite', 'pounce', 'bite'], pack: 3,
+    build: (g) => dino(g, 0x5d8a3a, 0x3d5e26, 0.55),
+  },
+  trex: {
+    name: 'T-Rex', hp: 70, atk: 13, def: 5, xp: 30, coins: [15, 30], speed: 3, radius: 1.8, tall: 4, moves: ['bite', 'roar', 'chomp'], drop: ['fossil', 1],
+    build: (g) => dino(g, 0x7a5a3a, 0x54391f, 1.25, true),
+  },
+  shark: {
+    name: 'Shark', hp: 20, atk: 9, def: 2, xp: 9, coins: [4, 10], speed: 5, swim: true, moves: ['bite', 'thrash', 'bite'],
+    build(g) {
+      box(g, 0.6, 0.6, 1.8, 0x5d6d7e, 0, 0.5, 0); box(g, 0.56, 0.2, 1.6, 0xe8ecef, 0, 0.26, -0.05);
+      const fin = cone(g, 0.18, 0.6, 0x4e5d6c, 0, 1.0, 0.1); fin.scale.z = 0.3;
+      const tail = new THREE.Group(); tail.position.set(0, 0.5, 0.95); g.add(tail);
+      box(tail, 0.1, 0.8, 0.35, 0x4e5d6c, 0, 0, 0.15);
+      box(g, 0.4, 0.06, 0.05, 0xffffff, 0, 0.36, -0.9);
+      for (const sd of [-1, 1]) box(g, 0.05, 0.08, 0.08, 0x111111, sd * 0.3, 0.6, -0.65);
+      return { tail };
+    },
+  },
+  wyrmling: {
+    name: 'Wyrmling', hp: 18, atk: 9, def: 3, xp: 10, coins: [5, 12], speed: 3.6, fly: true, moves: ['flame', 'claw', 'flame'],
+    build: (g) => dragonModel(g, 0xb8322c, 0.45, 1.2),
+  },
+  dragon: {
+    name: 'Elder Dragon', hp: 200, atk: 14, def: 6, xp: 60, coins: [40, 60], speed: 0, boss: true, fly: true, radius: 4, tall: 6,
+    moves: ['flamestorm', 'buffet', 'summon'], minion: 'wyrmling',
+    build: (g) => dragonModel(g, 0x5a2d91, 1.9, 2.2, true),
+  },
   mycelord: {
     name: 'The Mycelord', hp: 90, atk: 8, def: 2, xp: 40, coins: [20, 30], speed: 0, boss: true, radius: 2.4, moves: ['storm', 'stomp', 'summon'],
     build(g) {
@@ -131,6 +204,16 @@ const ITEMS = {
   syrup: { icon: '🍯', name: 'Honey Syrup', desc: '+10 FP' },
   shard: { icon: '🔮', name: 'Crystal Shard', desc: '18 damage, ignores defense' },
   spore: { icon: '🌫', name: 'Glow Spore', desc: 'Puts every foe to sleep' },
+  fossil: { icon: '🦴', name: 'Fossil', desc: 'Ancient bone. Bone portals want these.', passive: true },
+};
+export const WEAPONS = {
+  fists: { icon: '✊', name: 'Fists', atk: 0, desc: 'Honest. Reliable. Weak.' },
+  wood: { icon: '🗡', name: 'Wooden Sword', atk: 3, desc: '+3 attack.', color: 0x9b6b3d },
+  iron: { icon: '⚔️', name: 'Iron Sword', atk: 7, desc: '+7 attack.', color: 0xc9d1d9 },
+  diamond: { icon: '💎', name: 'Diamond Sword', atk: 12, crit: true, desc: '+12 attack. Good hits often become Excellent.', color: 0x66fff0 },
+  club: { icon: '🦴', name: 'Fossil Club', atk: 9, stun: true, desc: '+9 attack. 30% chance to stun.', color: 0xeee6cc },
+  dragon: { icon: '🔥', name: 'Dragon Blade', atk: 18, fire: true, desc: '+18 attack. Hits burn; Fire Burst costs 1 FP.', color: 0xff5a1f },
+  blaster: { icon: '🧨', name: 'TNT Blaster', atk: 2, ranged: true, desc: '+2 attack. G / 🎯 fires exploding TNT in the world.', color: 0x444444 },
 };
 const ORE_VALUE = { [B.COAL_ORE]: 6, [B.IRON_ORE]: 10, [B.GOLD_ORE]: 15, [B.DIAMOND_ORE]: 28, [B.CRYSTAL]: 18 };
 
@@ -157,7 +240,8 @@ class Enemy {
 // ---- player stats --------------------------------------------------------------------------------------------
 const FRESH = {
   lvl: 1, xp: 0, hp: 20, maxHp: 20, fp: 10, maxFp: 10, atk: 6, def: 2, mag: 5, coins: 0,
-  items: { mushroom: 2, syrup: 1, shard: 0, spore: 0 }, kills: {}, echoes: {}, relics: [], bosses: [], home: null, crown: false, blessed: 0,
+  items: { mushroom: 2, syrup: 1, shard: 0, spore: 0, fossil: 0 }, kills: {}, echoes: {}, relics: [], bosses: [], home: null, crown: false, blessed: 0,
+  weapons: ['fists', 'wood'], weapon: 'wood', vehicles: ['kart', 'boat'], dragon: false,
 };
 const xpNeeded = (lvl) => 10 + (lvl - 1) * 14;
 
@@ -169,7 +253,8 @@ export class Rpg {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem('vx-rpg')); } catch { /* ignore */ }
     const f = structuredClone(FRESH);
-    this.s = saved && saved.lvl ? { ...f, ...saved, items: { ...f.items, ...saved.items }, kills: { ...saved.kills }, echoes: { ...saved.echoes }, relics: saved.relics ?? [], bosses: saved.bosses ?? [] } : f;
+    this.s = saved && saved.lvl ? { ...f, ...saved, items: { ...f.items, ...saved.items }, kills: { ...saved.kills }, echoes: { ...saved.echoes }, relics: saved.relics ?? [], bosses: saved.bosses ?? [],
+      weapons: saved.weapons ?? f.weapons, weapon: saved.weapon ?? f.weapon, vehicles: saved.vehicles ?? f.vehicles } : f;
     this.coinGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.06, 20);
     this.coinMat = new THREE.MeshStandardMaterial({ color: 0xffc928, metalness: 0.8, roughness: 0.25, emissive: 0x6a4300 });
     this.popups = [];
@@ -265,7 +350,21 @@ export class Rpg {
   setHome(x, y, z) { this.s.homeBlock = [x, y, z]; this.s.home = [x + 0.5, y + 1, z + 0.5]; this.renderHud(); this.chat('', '🏠 Home set. Rest at the beacon to heal; you will return here if defeated.'); }
 
   /** Mining something rare can attract attention. */
+  get weapon() { return WEAPONS[this.s.weapon] || WEAPONS.fists; }
+  giveWeapon(k, why) {
+    if (this.s.weapons.includes(k)) return;
+    this.s.weapons.push(k); this.s.weapon = k;
+    const W = WEAPONS[k]; this.banner(`New weapon: ${W.name}`, `${why} ${W.desc} (Equipped — change it in the inventory.)`, W.icon);
+    this.renderHud(); this.hooks.onWeapon?.();
+  }
+
   onMined(id, x, y, z) {
+    if (id === B.BONE || id === B.FOSSIL) {
+      this.s.items.fossil++; this.popText('+1 🦴', V(x + 0.5, y + 1, z + 0.5), 'item');
+      if (this.s.items.fossil === 3) this.chat('', '🦴 Three fossils. Somewhere, a gate made of bone would open for you now…');
+      if (this.s.items.fossil >= 6) this.giveWeapon('club', 'You lash the biggest fossils together.');
+      this.renderHud();
+    }
     if (id === B.CRYSTAL) { this.s.items.shard++; this.popText('+1 🔮', V(x + 0.5, y + 1, z + 0.5), 'item'); this.renderHud(); }
     if ((id === B.CRYSTAL || id === B.DIAMOND_ORE) && this.enabled && Math.random() < 0.35) {
       const a = Math.random() * 6.28;
@@ -296,7 +395,8 @@ export class Rpg {
   }
 
   levelAt(x, z) {
-    const tier = Math.floor(Math.hypot(x, z) / 180);
+    const [lx, lz, realm] = toLocal(x, z);
+    const tier = Math.floor(Math.hypot(lx, lz) / 180) + REALMS[realm].lvl;
     return Math.max(1, Math.min(this.s.lvl + rand(-1, 1), this.s.lvl + tier) + (tier >= 3 ? rand(0, 2) : 0));
   }
 
@@ -304,7 +404,9 @@ export class Rpg {
 
   /** What lives here? Biome, depth and time decide. */
   ecologyType(x, z, underground) {
-    const night = this.hooks.isNight();
+    const night = this.hooks.isNight(), realm = realmAt(x, z);
+    if (realm === 'primeval') { const r = Math.random(); return underground ? 'gemmite' : r < 0.6 ? 'raptor' : r < 0.68 ? 'trex' : 'buzzbee'; }
+    if (realm === 'dragon') return underground ? 'gemmite' : Math.random() < 0.75 ? 'wyrmling' : 'buzzbee';
     if (underground) return Math.random() < 0.7 ? 'gemmite' : night ? 'glowshroom' : 'shroomba';
     const { biome } = this.world.column(Math.floor(x), Math.floor(z));
     const shroomT = night ? 'glowshroom' : 'shroomba';
@@ -334,19 +436,49 @@ export class Rpg {
   }
 
   trySpawn(p) {
+    const w = this.world;
+    // sharks find swimmers in open water
+    if (w.get(Math.floor(p.x), Math.floor(p.y + 0.5), Math.floor(p.z)) === B.WATER && this.world.column(Math.floor(p.x), Math.floor(p.z)).h < SEA - 4) {
+      if (this.enemies.some((e) => e.T.swim)) return;
+      const a = Math.random() * 6.28, x = p.x + Math.cos(a) * 14, z = p.z + Math.sin(a) * 14, y = Math.min(SEA - 1, p.y);
+      if (w.get(Math.floor(x), Math.floor(y), Math.floor(z)) !== B.WATER) return;
+      const e = new Enemy('shark', x, y, z, this.levelAt(x, z));
+      this.enemies.push(e); this.scene.add(e.group);
+      this.chat('', '🦈 A fin cuts through the water…');
+      return;
+    }
     const ug = this.underground(p);
     const a = Math.random() * 6.28, r = ug ? 7 + Math.random() * 8 : 20 + Math.random() * 25;
     const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
     const type = this.ecologyType(x, z, ug);
     if (!type) return;
-    const lvl = this.levelAt(x, z), far = Math.hypot(x, z) > 450;
-    const elite = far && Math.random() < 0.2;
+    const [lx, lz] = toLocal(x, z);
+    const lvl = this.levelAt(x, z), far = Math.hypot(lx, lz) > 450;
+    const elite = far && Math.random() < 0.2 && !ENEMIES[type].tall;
     const lead = this.spawn(type, x, z, elite ? lvl + 2 : lvl, ug ? p.y + 3 : undefined, elite);
-    if (lead && !ug && Math.random() < 0.4) this.spawn(type, x + 1.5, z + 1, lvl);
+    const pack = ENEMIES[type].pack || (Math.random() < 0.4 ? 2 : 1);
+    for (let i = 1; lead && !ug && i < pack; i++) this.spawn(type, x + 1.5 * i, z + (i % 2 ? 1 : -1), lvl);
   }
 
   /** Sleeping bosses live under their giant glowcaps. */
   updateBoss(p) {
+    const nest = sitesNear(this.world, 'nest', p.x, p.z, 70).find((b) => !this.s.bosses.includes(b.id));
+    if (nest) {
+      let dragon = this.enemies.find((e) => e.site === nest);
+      const lvl = 12 + Math.floor(Math.hypot(...toLocal(nest.x, nest.z).slice(0, 2)) / 300);
+      if (!dragon) {
+        dragon = this.spawn('dragon', nest.x + 0.5, nest.z + 0.5, lvl, 104);
+        if (!dragon) return;
+        dragon.maxHp = dragon.hp = 150 + lvl * 25; dragon.atk = 8 + lvl; dragon.def = 4 + Math.floor(lvl / 3);
+        dragon.site = nest; dragon.asleep = true;
+      }
+      if (Math.hypot(p.x - nest.x, p.z - nest.z) < 40 && !this.warned.has(dragon)) {
+        this.warned.add(dragon);
+        this.chat('', `🐉 An Elder Dragon (Lv ${lvl}) sleeps coiled on the spire. Punch it to wake it. Beat it, and it might let you ride…`);
+      }
+      if (dragon.asleep && Math.random() < 0.02) this.popText('Z z z', dragon.pos.clone().add(V(0, 7, 0)), 'item');
+      return;
+    }
     const st = sitesNear(this.world, 'boss', p.x, p.z, 60).find((b) => !this.s.bosses.includes(b.id));
     if (!st) return;
     let boss = this.enemies.find((e) => e.site === st);
@@ -390,13 +522,19 @@ export class Rpg {
         else if ((e.think -= dt) <= 0) { e.think = 1 + Math.random() * 3; e.walk = Math.random() < 0.6; e.yaw += (Math.random() - 0.5) * 3; }
         const sp = chase ? e.T.speed * (scared ? 1.3 : 1) : e.walk ? e.T.speed * 0.4 : 0;
         const nx = e.pos.x - Math.sin(e.yaw) * sp * dt, nz = e.pos.z - Math.cos(e.yaw) * sp * dt;
-        const g = this.groundAt(nx, e.pos.y + 1, nz);
-        if (g !== null && g <= e.pos.y + 1.1) { e.pos.x = nx; e.pos.z = nz; e.pos.y += (g - e.pos.y) * Math.min(1, dt * 10); }
-        else e.think = 0;
+        if (e.T.swim) {
+          const ny = e.pos.y + Math.sign((chase ? p.y : e.pos.y) - e.pos.y) * Math.min(Math.abs(p.y - e.pos.y), dt * 2);
+          if (this.world.get(Math.floor(nx), Math.floor(ny + 0.3), Math.floor(nz)) === B.WATER) { e.pos.set(nx, ny, nz); } else e.think = 0;
+          if (e.tail) e.tail.rotation.y = Math.sin(e.t * 8) * 0.4;
+        } else {
+          const g = this.groundAt(nx, e.pos.y + 1, nz);
+          if (g !== null && g <= e.pos.y + 1.1) { e.pos.x = nx; e.pos.z = nz; e.pos.y += (g - e.pos.y) * Math.min(1, dt * 10); }
+          else e.think = 0;
+        }
         if (d < 12 && e.lvl >= this.s.lvl + 3 && !this.warned.has(e)) { this.warned.add(e); this.chat('', `⚠ A Lv ${e.lvl} ${e.name}. That looks dangerous.`); }
       }
       const R = e.T.radius || 0.9, dy = p.y - (e.pos.y + e.lift);
-      if (Math.hypot(p.x - e.pos.x, p.z - e.pos.z) < R && dy > -1.6 && dy < (e.T.boss ? 5 : 1.3) && !e.stun) {
+      if (Math.hypot(p.x - e.pos.x, p.z - e.pos.z) < R && dy > -1.6 - (e.T.tall || 0) && dy < (e.T.tall || (e.T.boss ? 5 : 1.3)) && !e.stun) {
         if (this.star > 0 && !e.T.boss) { this.starDefeat(e); continue; }
         this.startBattle(e, this.player.vel.y < -1 && dy > 0.4 ? 'stomp' : false);
         return;
@@ -417,7 +555,7 @@ export class Rpg {
   raycast(o, dir, maxDist) {
     let best = null;
     for (const e of this.enemies) {
-      const R = e.T.radius ? e.T.radius * 0.8 : 0.5, H = e.T.boss ? 5 : 1.2;
+      const R = e.T.radius ? e.T.radius * 0.8 : 0.5, H = e.T.tall || (e.T.boss ? 5 : 1.2);
       const min = [e.pos.x - R, e.pos.y + e.lift, e.pos.z - R], max = [e.pos.x + R, e.pos.y + e.lift + H, e.pos.z + R];
       const oo = [o.x, o.y, o.z], dd = [dir.x, dir.y, dir.z];
       let t0 = 0, t1 = maxDist;
@@ -453,7 +591,8 @@ export class Rpg {
       e.inner.scale.y = e.curled ? 0.7 : 1;
       if (e.curled) e.inner.rotation.y += dt * 8; else if (!this.inBattle) e.inner.rotation.y = 0;
       e.feet?.forEach((f, i) => { f.position.z = -0.04 + Math.sin(e.t * 9 + i * Math.PI) * 0.08; });
-      e.wings?.forEach((w, i) => { w.rotation.z = (i ? 1 : -1) * Math.sin(e.t * 40) * 0.6; });
+      e.wings?.forEach((w, i) => { w.rotation.z = (i ? 1 : -1) * Math.sin(e.t * (e.T.boss || e.type === 'wyrmling' ? 5 : 40)) * 0.6; });
+      if (e.tail && !e.T.swim) e.tail.rotation.y = Math.sin(e.t * 3) * 0.3;
     }
   }
 
@@ -706,7 +845,7 @@ export class Rpg {
     if (act.kind === 'special') {
       const opts = [
         { k: 'jump', label: `🦘 Super Jump — 3 FP · chain timed landings`, cost: 3 },
-        { k: 'fire', label: `🔥 Fire Burst — ${this.has('ember') ? 2 : 4} FP · all foes, scorches the land`, cost: this.has('ember') ? 2 : 4 },
+        { k: 'fire', label: `🔥 Fire Burst — ${this.weapon.fire ? 1 : this.has('ember') ? 2 : 4} FP · all foes, scorches the land`, cost: this.weapon.fire ? 1 : this.has('ember') ? 2 : 4 },
       ];
       if (this.echo('dash')) opts.push({ k: 'dash', label: '💨 Shell Dash — 3 FP · all grounded foes, ignores defense', cost: 3 });
       if (this.echo('slam')) opts.push({ k: 'slam', label: '💥 Spore Slam — 4 FP · heavy hit + stun', cost: 4 });
@@ -718,7 +857,7 @@ export class Rpg {
       return true;
     }
     if (act.kind === 'item') {
-      const keys = Object.keys(ITEMS);
+      const keys = Object.keys(ITEMS).filter((k) => !ITEMS[k].passive);
       const i = await this.choose(keys.map((k) => ({ label: `${ITEMS[k].icon} ${ITEMS[k].name} ×${s.items[k]} — ${ITEMS[k].desc}`, disabled: !s.items[k] })));
       if (i < 0) return false;
       const k = keys[i];
@@ -741,7 +880,7 @@ export class Rpg {
     return false;
   }
 
-  atkPower() { return Math.round(this.s.atk * (this.terrain?.high ? 1.25 : 1)); }
+  atkPower() { return Math.round((this.s.atk + this.weapon.atk) * (this.terrain?.high ? 1.25 : 1)); }
 
   async hurl(from, e, color) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 }));
@@ -765,8 +904,12 @@ export class Rpg {
     const hitAt = e.group.position.clone(); hitAt.y += 0.8 + e.lift;
     const swing = this.timed(0.7, 0.42, 0.62, hitAt);
     this.tween(0.5, (k) => { this.hero.armR.rotation.x = -Math.sin(k * Math.PI) * 2.2; });
-    const r = await swing;
+    let r = await swing;
+    const W = this.weapon;
+    if (W.crit && r === 'good' && Math.random() < 0.4) r = 'perfect';
     let dmg = Math.max(1, this.atkPower() - e.def + rand(-1, 1));
+    if (W.fire) { dmg += 4; this.burst(e.group.position.x - 0.5, e.group.position.y + 0.5, e.group.position.z - 0.5, B.LAVA); }
+    if (W.stun && Math.random() < 0.3 && !e.T.boss) { e.skip = 1; this.popText('Bonk! Stunned', hitAt.clone().add(V(0, 1.4, 0)), 'nice'); }
     if (r !== 'miss') dmg = Math.round(dmg * (r === 'perfect' ? 2.5 : 2));
     if (e.curled) dmg = Math.max(1, Math.floor(dmg / 3));
     this.damage(e, dmg, r !== 'miss' && r);
@@ -951,14 +1094,14 @@ export class Rpg {
     if (mv.summon) {
       const alive = this.foes.filter((f) => f.hp > 0).length;
       if (alive < 3) {
-        const type = this.hooks.isNight() ? 'glowshroom' : 'shroomba';
+        const type = e.T.minion || (this.hooks.isNight() ? 'glowshroom' : 'shroomba');
         const minion = new Enemy(type, this.center.x, this.center.y, this.center.z, Math.max(1, e.lvl - 3));
         this.enemies.push(minion); this.scene.add(minion.group); this.foes.push(minion);
         const n = this.foes.length;
         minion.home = e.home.clone().addScaledVector(this.perp, (n % 2 ? 1 : -1) * 3.2).addScaledVector(this.axis, -1);
         minion.home.y = this.groundAt(minion.home.x, minion.home.y + 3, minion.home.z) ?? minion.home.y;
         minion.pos.copy(minion.home); minion.group.position.copy(minion.home); minion.group.rotation.y = Math.atan2(this.axis.x, this.axis.z);
-        this.setMsg(`${e.name} calls the grove — a ${minion.name} pops out of the ground!`);
+        this.setMsg(e.T.minion ? `${e.name} shrieks — a ${minion.name} answers the call!` : `${e.name} calls the grove — a ${minion.name} pops out of the ground!`);
       } else this.setMsg(`${e.name} rumbles, but the grove has nothing left to send.`);
       await this.wait(0.9); this.renderFoes(); return;
     }
@@ -1047,10 +1190,16 @@ export class Rpg {
       const lv = s.lvl; this.levelUps();
       if (s.lvl > lv) msg += ` · LEVEL UP! Lv ${s.lvl}`;
       const boss = this.foes.find((e) => e.T.boss);
-      if (boss) {
-        s.bosses.push(boss.site.id);
+      if (boss && boss.type === 'dragon') {
+        if (boss.site) s.bosses.push(boss.site.id);
+        s.dragon = true;
+        if (!s.vehicles.includes('dragon')) s.vehicles.push('dragon');
+        this.giveWeapon('dragon', 'Among the scales on the spire you find a blade that is still warm.');
+        this.banner('The Elder Dragon yields', 'It bows its head. Summon it from the inventory (Vehicles) and it will carry you through the sky.', '🐉');
+      } else if (boss) {
+        if (boss.site) s.bosses.push(boss.site.id);
         const firstCrown = !s.crown; s.crown = true;
-        this.hooks.onBossDefeated(boss.site);
+        if (boss.site) this.hooks.onBossDefeated(boss.site);
         this.banner('The Mycelord falls', firstCrown
           ? 'Its glowcap turns to gold and the grove falls quiet. You take the Spore Crown. Starstones everywhere seem to hum when you are near…'
           : 'Another grove is freed. Its glowcap turns to gold.', '👑');

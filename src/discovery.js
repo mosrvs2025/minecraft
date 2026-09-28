@@ -1,16 +1,21 @@
 // Discovery: noticing landmarks, remembering them on the compass, lore from Starstones, rumors, and the journal.
 import { LANDMARKS, sitesNear, nearestSite } from './landmarks.js';
 import { RELICS, ECHOES, ITEMS } from './rpg.js';
+import { realmAt, REALMS } from './realms.js';
 
 const $ = (id) => document.getElementById(id);
 // how close you must get to notice each kind of landmark (the giant glowcap is visible from far away)
-const NOTICE = { boss: 120, obelisk: 75, island: 85, vault: 30, geode: 9 };
+const NOTICE = { boss: 120, obelisk: 75, island: 85, vault: 30, geode: 9, volcano: 220, fossil: 26, portal: 60, nest: 160 };
 const FIRST_TIME = {
   boss: 'A colossal glowing mushroom on the horizon. Something sleeps beneath it.',
   obelisk: 'A Starstone. Its altar stone hums — try touching it.',
   vault: 'An old ruin, sealed with cracked stone. Fists won\'t do. Something with more force might.',
   geode: 'A hollow crystal geode, wrapped in a shell too tough to punch. Crystals attract things that skitter.',
   island: 'Land, floating in the sky. There must be a way up there.',
+  volcano: 'A smoking volcano. Lava rivers, magma underfoot, and it throws things. Basalt and magma make great building blocks.',
+  fossil: 'Bones poking out of the ground! Dig up the skeleton — fossils are more than trophies. (Mine bone or fossil stone.)',
+  portal: 'An ancient portal frame, humming. Bone gates want fossils; obsidian gates want the worthy. Walk through to find out.',
+  nest: 'A spire of obsidian rising from the sea, crowned with a nest. Something vast sleeps up there.',
 };
 const LORE = [
   'Before the stars fell, the mushrooms were small.',
@@ -77,7 +82,7 @@ export class Discovery {
           else this.chat('', `${L.icon} Discovered a ${L.name}${wasRumor ? ' — the rumor was true!' : ''} (+${xp} XP)`);
         }
       }
-      const dist = Math.hypot(p.x, p.z);
+      const dist = realmAt(p.x, p.z) === 'over' ? Math.hypot(p.x, p.z) : 0;
       while (this.d.rings < RINGS.length && dist > RINGS[this.d.rings]) {
         const i = this.d.rings++;
         const c = 20 * (i + 1); this.rpg.s.coins += c; this.rpg.renderHud();
@@ -158,6 +163,15 @@ export class Discovery {
     return "Hm. I don't know anything you don't already know. Impressive.";
   }
 
+  visitRealm(realm) {
+    this.d.realms ??= [];
+    if (realm === 'over' || this.d.realms.includes(realm)) return;
+    this.d.realms.push(realm); this.save();
+    const xp = 25 + this.rpg.s.lvl * 3;
+    this.rpg.s.xp += xp; this.rpg.levelUps(); this.rpg.renderHud();
+    this.chat('', `${REALMS[realm].icon} First steps in ${REALMS[realm].name}! (+${xp} XP)`);
+  }
+
   closeJournal() { $('journal').hidden = true; this.controls.enabled = true; }
 
   openJournal() {
@@ -179,7 +193,7 @@ export class Discovery {
         <section><h4>Echoes</h4>${echoes}</section>
         <section><h4>Relics</h4>${relics}</section>
         <section><h4>Discoveries</h4><div class="jr-counts">${Object.keys(LANDMARKS).map((t) => `<span>${LANDMARKS[t].icon} ${LANDMARKS[t].name}: ${counts[t] || 0}</span>`).join('')}
-          <span>❔ Rumors: ${rumors}</span><span>👑 Groves freed: ${r.bosses.length}</span><span>🧭 Frontiers: ${this.d.rings}</span></div>
+          <span>❔ Rumors: ${rumors}</span><span>👑 Groves freed: ${r.bosses.length}</span><span>🧭 Frontiers: ${this.d.rings}</span><span>🌀 Realms: ${1 + (this.d.realms?.length || 0)}/3</span></div>
           <h4>Bestiary</h4><div class="jr-counts">${kills}</div><h4>Pack</h4><p>${items} · 🪙 ${r.coins}</p></section>
         <section><h4>Starstone lore</h4>${lore}</section>
       </div></div>`;

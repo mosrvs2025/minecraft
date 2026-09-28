@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { TILE, BLOCKS } from './blocks.js';
 
-const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 10;
+const T = 64, G = 8, CELL = T + 2 * G, COLS = 4, ROWS = 15;
 const W = CELL * COLS, H = CELL * ROWS;
 
 export function tileUV(tile) {
@@ -269,6 +269,79 @@ P.trophy = (u, v) => {
   return [...sc([0.55, 0.4, 0.15], 0.8 + n * 0.3), 1, 0.4];
 };
 
+P.basalt = (u, v) => {
+  const n = fbm(u, v, 12, 3, 3, 261), c = Math.abs(fbm(u, v, 4, 4, 2, 262) - 0.5);
+  return [...sc([0.22, 0.22, 0.25], 0.7 + n * 0.5 - (c < 0.02 ? 0.3 : 0)), 1, n];
+};
+P.magma = (u, v) => {
+  const [d1, d2] = voronoi(u, v, 5, 271), e = d2 - d1;
+  if (e < 0.05) return [1, 0.45 + (0.05 - e) * 6, 0.1, 1, 0];
+  return [...sc([0.3, 0.12, 0.08], 0.7 + fbm(u, v, 8, 8, 2, 272) * 0.5), 1, 0.7];
+};
+P.lava = (u, v) => {
+  const n = fbm(u, v, 4, 4, 4, 281), f = fbm(u + n * 0.3, v, 8, 8, 2, 282);
+  return [1, 0.35 + f * 0.45, 0.05 + f * 0.1, 1, f];
+};
+P.ice = (u, v) => {
+  const n = fbm(u, v, 4, 4, 3, 291), cr = Math.abs(fbm(u, v, 3, 3, 3, 292) - 0.5) < 0.015;
+  return [...sc([0.66, 0.84, 0.98], 0.85 + n * 0.2 + (cr ? 0.15 : 0)), 1, n * 0.3];
+};
+const coral = (col, seed) => (u, v) => {
+  const x = u * T, fromBottom = (1 - v) * T;
+  for (let i = 0; i < 6; i++) {
+    const b = 8 + hi(i, 0, seed) * 48, hgt = T * (0.4 + hi(i, 1, seed) * 0.55), w = 3 + hi(i, 2, seed) * 3;
+    const c = b + Math.sin(fromBottom * 0.12 + i) * 5;
+    if (fromBottom < hgt && Math.abs(x - c) < w * (fromBottom > hgt - 6 ? 1.6 : 1)) return [...sc(col, 0.7 + fromBottom / T * 0.5), 1, 0.6];
+  }
+  return [0, 0, 0, 0, 0];
+};
+P.coralRed = coral([0.95, 0.35, 0.3], 301);
+P.coralBlue = coral([0.3, 0.6, 1], 303);
+P.fossil = (u, v) => {
+  const b = Math.abs(v - 0.5 - Math.sin(u * 9) * 0.08) < 0.07 || (Math.abs(u - 0.3) < 0.05 && v > 0.25 && v < 0.75) || (Math.abs(u - 0.7) < 0.05 && v > 0.25 && v < 0.75);
+  if (b) return [0.92, 0.88, 0.76, 1, 0.9];
+  return P.stone(u, v);
+};
+P.boneSide = (u, v) => {
+  const n = fbm(u, v, 2, 12, 3, 311);
+  return [...sc([0.92, 0.89, 0.8], 0.8 + n * 0.25), 1, n];
+};
+P.boneTop = (u, v) => {
+  const d = Math.hypot(u - 0.5, v - 0.5);
+  return d > 0.4 ? P.boneSide(u, v) : [...sc([0.8, 0.72, 0.6], 0.8 + fbm(u, v, 8, 8, 2, 313) * 0.3), 1, 0.4];
+};
+P.lantern = (u, v) => {
+  const e = Math.min(u, v, 1 - u, 1 - v);
+  if (e < 0.1 || Math.abs(u - 0.5) < 0.04 || Math.abs(v - 0.5) < 0.04) return [0.2, 0.18, 0.16, 1, 1];
+  return [1, 0.82, 0.45, 1, 0.3];
+};
+const wool = (col, seed) => (u, v) => {
+  const n = fbm(u, v, 16, 16, 2, seed), r = Math.sin((u + v) * 60) * 0.03;
+  return [...sc(col, 0.82 + n * 0.25 + r), 1, n * 0.4];
+};
+P.woolRed = wool([0.75, 0.18, 0.18], 321);
+P.woolBlue = wool([0.2, 0.32, 0.75], 322);
+P.woolYellow = wool([0.95, 0.8, 0.2], 323);
+P.woolWhite = wool([0.93, 0.93, 0.9], 324);
+const metal = (col, seed) => (u, v) => {
+  const e = Math.min(u, v, 1 - u, 1 - v), n = fbm(u, v, 4, 4, 2, seed);
+  const shine = Math.max(0, 1 - Math.abs(u - v) * 4) * 0.25;
+  return [...sc(col, (e < 0.06 ? 0.7 : 0.9) + n * 0.15 + shine), 1, e < 0.06 ? 0.2 : 0.7];
+};
+P.goldBlock = metal([1, 0.8, 0.25], 331);
+P.diamondBlock = metal([0.45, 0.95, 0.92], 333);
+P.portal = (u, v) => {
+  const a = Math.atan2(v - 0.5, u - 0.5), d = Math.hypot(u - 0.5, v - 0.5);
+  const sw = Math.sin(a * 3 + d * 18) * 0.5 + 0.5;
+  return [0.55 + sw * 0.3, 0.2 + sw * 0.2, 0.95, sw > 0.25 ? 1 : 0, sw];
+};
+P.moss = (u, v) => {
+  const n = fbm(u, v, 4, 4, 4, 341), s = px(u, v, 342);
+  const k = 0.65 + n * 0.45 + (s - 0.5) * 0.2;
+  return [0.2 * k, 0.48 * k, 0.16 * k, 1, n * 0.5];
+};
+P.mossSide = sideTop(P.dirt, P.moss, 343, 0.22);
+
 const PAINT = {
   [TILE.GRASS_TOP]: P.grass, [TILE.GRASS_SIDE]: P.grassSide, [TILE.DIRT]: P.dirt, [TILE.STONE]: P.stone,
   [TILE.SAND]: P.sand, [TILE.LOG_SIDE]: P.logSide, [TILE.LOG_TOP]: P.logTop, [TILE.LEAVES]: P.leaves,
@@ -280,6 +353,11 @@ const PAINT = {
   [TILE.CAP_GLOW]: P.capGlow, [TILE.CAP_GOLD]: P.capGold, [TILE.OBSIDIAN]: P.obsidian, [TILE.STARSTONE]: P.starstone,
   [TILE.CRACKED]: P.cracked, [TILE.GEODE]: P.geode, [TILE.CRYSTAL]: P.crystal, [TILE.VAULT_SIDE]: P.vaultSide,
   [TILE.VAULT_TOP]: P.vaultTop, [TILE.BEACON]: P.beacon, [TILE.TROPHY]: P.trophy,
+  [TILE.BASALT]: P.basalt, [TILE.MAGMA]: P.magma, [TILE.LAVA]: P.lava, [TILE.ICE]: P.ice, [TILE.CORAL_RED]: P.coralRed,
+  [TILE.CORAL_BLUE]: P.coralBlue, [TILE.FOSSIL]: P.fossil, [TILE.BONE_SIDE]: P.boneSide, [TILE.BONE_TOP]: P.boneTop,
+  [TILE.LANTERN]: P.lantern, [TILE.WOOL_RED]: P.woolRed, [TILE.WOOL_BLUE]: P.woolBlue, [TILE.WOOL_YELLOW]: P.woolYellow,
+  [TILE.WOOL_WHITE]: P.woolWhite, [TILE.GOLD_BLOCK]: P.goldBlock, [TILE.DIAMOND_BLOCK]: P.diamondBlock,
+  [TILE.PORTAL]: P.portal, [TILE.MOSS_TOP]: P.moss, [TILE.MOSS_SIDE]: P.mossSide,
 };
 
 export function buildAtlas(anisotropy = 4) {
@@ -293,7 +371,7 @@ export function buildAtlas(anisotropy = 4) {
     const px = new Array(T * T);
     for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) px[x + y * T] = paint((x + 0.5) / T, (y + 0.5) / T);
     // plants and glass must not wrap into their gutters (they are not tileable)
-    const clampEdges = tile === TILE.TALLGRASS || tile === TILE.FLOWER || tile === TILE.GLASS;
+    const clampEdges = [TILE.TALLGRASS, TILE.FLOWER, TILE.GLASS, TILE.CORAL_RED, TILE.CORAL_BLUE, TILE.LANTERN].includes(tile);
     const at = (x, y) => clampEdges
       ? px[Math.min(T - 1, Math.max(0, x)) + Math.min(T - 1, Math.max(0, y)) * T]
       : px[wrap(x, T) + wrap(y, T) * T];
@@ -333,6 +411,11 @@ export function makeIcon(atlasCanvas, id, size = 64) {
   const b = BLOCKS[id];
   const src = (tile) => [(tile % COLS) * CELL + G, Math.floor(tile / COLS) * CELL + G];
   const s = size / 64, k = 28 * s / T;
+  if (b.kind === 'water') {
+    const gr = ctx.createLinearGradient(0, 0, 0, size); gr.addColorStop(0, '#5ab4e8'); gr.addColorStop(1, '#1d5a78');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(size / 2, 6 * s); ctx.quadraticCurveTo(size - 8 * s, size * 0.6, size / 2, size - 6 * s); ctx.quadraticCurveTo(8 * s, size * 0.6, size / 2, 6 * s); ctx.fill();
+    return cv.toDataURL();
+  }
   if (b.kind !== 'cube') { const [sx, sy] = src(b.tile); ctx.drawImage(atlasCanvas, sx, sy, T, T, 4 * s, 4 * s, 56 * s, 56 * s); return cv.toDataURL(); }
   const faces = [
     [b.tiles[0], [k, -k / 2, k, k / 2, 4 * s, 18 * s], 0],

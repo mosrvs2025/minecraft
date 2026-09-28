@@ -218,3 +218,23 @@ body.starman #app canvas { animation: star-hue 0.6s linear infinite; }
   #active-hacks { top: calc(88px + env(safe-area-inset-top)); }
 }
 @media (max-width: 760px) and (pointer: fine) { #compass { top: calc(74px + env(safe-area-inset-top)); } }
+
+/* inventory */
+#inv { position: fixed; inset: 0; z-index: 7; display: grid; place-items: center; padding: 16px; background: rgba(4,6,14,.55); backdrop-filter: blur(3px); }
+.jr-card.inv { width: min(820px, 100%); }
+.inv-tabs { display: flex; gap: 6px; margin: 6px 0 12px; flex-wrap: wrap; }
+.inv-tabs button { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; font: 600 14px system-ui; cursor: pointer; }
+.inv-tabs button.on { background: linear-gradient(180deg, #ffd84a, #e0a800); color: #2a1a4a; border-color: transparent; }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.inv-b { display: grid; justify-items: center; gap: 2px; padding: 6px 4px; border-radius: 10px; border: 2px solid transparent; background: rgba(255,255,255,.06); color: #fff; cursor: pointer; }
+.inv-b img { width: 40px; height: 40px; image-rendering: pixelated; }
+.inv-b span { font-size: 10px; opacity: .8; text-align: center; line-height: 1.1; }
+.inv-b.sel { border-color: #ffd84a; background: rgba(255,216,74,.15); }
+.inv-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,.06); }
+.inv-row b { min-width: 170px; } .inv-row span { flex: 1; font-size: 13px; opacity: .85; }
+.inv-row button { padding: 7px 12px; border-radius: 8px; border: 0; background: #ffd84a; color: #2a1a4a; font: 700 13px system-ui; cursor: pointer; }
+.inv-row button:disabled { background: rgba(255,255,255,.2); color: #fff; }
+.inv-row.locked { opacity: .5; }
+#inv-btn { position: absolute; left: calc(82px + env(safe-area-inset-left)); top: calc(40px + env(safe-area-inset-top)); pointer-events: auto;
+  padding: 5px 9px; border-radius: 9px; border: 1px solid rgba(255,255,255,.2); background: rgba(20,12,40,.5); color: #fff; font-size: 14px; cursor: pointer; }
+@media (pointer: coarse) { #inv-btn { top: calc(48px + env(safe-area-inset-top)); left: 84px; } .inv-row { flex-wrap: wrap; } .inv-row b { min-width: 0; } }

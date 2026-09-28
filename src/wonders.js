@@ -29,6 +29,9 @@ const STOCK = [
   { k: 'beanstalk', label: '🌱 Beanstalk Seed (plants right here)', price: 30, tier: 1 },
   { k: 'star', label: '⭐ Bottled Starman', price: 35, tier: 2 },
   { k: 'feather', label: '🪶 Feather Charm (relic — glide without Hover)', price: 80, tier: 2, relic: true },
+  { k: 'iron', label: '⚔️ Iron Sword (+7 attack)', price: 60, tier: 1, weapon: true },
+  { k: 'blaster', label: '🧨 TNT Blaster (fire exploding TNT with G)', price: 90, tier: 1, weapon: true },
+  { k: 'diamond', label: '💎 Diamond Sword (+12, frequent Excellents)', price: 160, tier: 2, weapon: true },
 ];
 
 export class Wonders {
@@ -77,7 +80,7 @@ export class Wonders {
   openShop() {
     const s = this.rpg.s, el = $('shop'), tier = this.pip.tier;
     this.controls.enabled = false; document.exitPointerLock?.();
-    const rows = STOCK.filter((it) => it.tier <= tier && !(it.relic && this.rpg.has(it.k)));
+    const rows = STOCK.filter((it) => it.tier <= tier && !(it.relic && this.rpg.has(it.k)) && !(it.weapon && this.rpg.s.weapons.includes(it.k)));
     const greet = ['"Ah, a customer! Out here! Sit, sit."', '"You look like someone who pokes at things. I like that."', '"Everything\'s for sale. Except the backpack. Don\'t ask about the backpack."'][Math.floor(Math.random() * 3)];
     el.innerHTML = `<div class="jr-card shop"><div class="jr-head"><b>🎒 Pip the Peddler</b><button class="jr-x">✕</button></div>
       <p>${greet}</p><p class="small">You have 🪙 ${s.coins}.${tier < 2 ? ' <i>Pip hints he carries stranger goods when met farther from spawn.</i>' : ''}</p>
@@ -95,6 +98,7 @@ export class Wonders {
     if (it.k === 'rumor') say = `"${this.discovery.rumor()}"`;
     else if (it.k === 'beanstalk') { const p = this.player.pos; this.hooks.beanstalk(Math.floor(p.x) + 2, Math.floor(p.y) - 1, Math.floor(p.z)); say = '"Stand back. It grows fast. Towards the clouds, usually."'; }
     else if (it.k === 'star') { this.rpg.startStar(); say = '"Drink it quick — it doesn\'t last!"'; }
+    else if (it.weapon) { this.rpg.giveWeapon(it.k, 'Pip wraps it in an old cloak.'); say = '"Careful. It\'s sharper than it looks."'; }
     else if (it.k === 'feather') { s.relics.push('feather'); this.rpg.banner(`Relic: ${RELICS.feather.name}`, RELICS.feather.desc, RELICS.feather.icon); say = '"Found it on a sky island. Or it found me."'; }
     else s.items[it.k]++;
     this.rpg.renderHud();

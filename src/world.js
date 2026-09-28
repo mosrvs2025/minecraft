@@ -1,6 +1,7 @@
 import { createNoise, hash3 } from './noise.js';
 import { B, BLOCKS, CS, CH, SEA } from './blocks.js';
 import { stampLandmarks, sitesNear } from './landmarks.js';
+import { REALMS, realmAt } from './realms.js';
 
 export const chunkKey = (cx, cz) => cx + ',' + cz;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -58,6 +59,8 @@ export class World {
   }
 
   column(x, z, raw = false) {
+    const realm = realmAt(x, z);
+    if (realm !== 'over') return this.realmColumn(realm, x - REALMS[realm].dx, z - REALMS[realm].dz);
     const n = this.noise;
     const cont = n.fbm2(x * 0.0022, z * 0.0022, 4);
     const temp = n.s2(x * 0.0011 + 100, z * 0.0011 - 50);
@@ -83,6 +86,21 @@ export class World {
     return { h, biome };
   }
 
+  realmColumn(realm, x, z) {
+    const n = this.noise;
+    if (realm === 'primeval') {
+      // rugged, humid jungle hills with swampy lowlands
+      const cont = n.fbm2(x * 0.003 + 5000, z * 0.003, 4);
+      let h = SEA + 7 + cont * 16 + Math.pow(n.ridged2(x * 0.008 + 77, z * 0.008, 4), 2) * 34;
+      h += n.fbm2(x * 0.04, z * 0.04, 2) * 2.5;
+      h = Math.min(CH - 14, Math.floor(h));
+      return { h, biome: h <= SEA + 1 ? 'swamp' : 'jungle' };
+    }
+    // the Dragon Isles: mostly sea, with low atolls; the real land floats (see generateChunk)
+    const h = Math.floor(SEA - 9 + n.fbm2(x * 0.004 - 9000, z * 0.004, 4) * 16);
+    return { h, biome: h > SEA ? 'atoll' : 'sea' };
+  }
+
   generateChunk(cx, cz) {
     const c = new Chunk(cx, cz);
     const d = c.data, n = this.noise, S2 = CS * CS;
@@ -98,7 +116,8 @@ export class World {
       const { h, biome } = col(lx, lz);
       const under = h < SEA;
       const top = under ? (h < SEA - 4 ? B.DIRT : B.SAND)
-        : biome === 'beach' || biome === 'desert' ? B.SAND : biome === 'snow' ? B.SNOW : biome === 'grove' ? B.MYCEL : B.GRASS;
+        : biome === 'beach' || biome === 'desert' || biome === 'atoll' ? B.SAND : biome === 'snow' ? B.SNOW : biome === 'grove' ? B.MYCEL
+        : biome === 'jungle' ? B.MOSS : biome === 'swamp' ? B.DIRT : B.GRASS;
       const sub = top === B.SAND ? B.SAND : biome === 'snow' ? B.STONE : B.DIRT;
       for (let y = 0; y <= Math.max(h, SEA); y++) {
         let id = B.AIR;
@@ -123,7 +142,13 @@ export class World {
       }
       if (h > maxY) maxY = h;
       // ground cover
-      if ((top === B.GRASS || top === B.MYCEL) && d[lx + lz * CS + h * S2] === top) {
+      // coral reefs on shallow sea floors
+      if (under && h > SEA - 12 && d[lx + lz * CS + (h + 1) * S2] === B.WATER && hash3(x, 41, z) < 0.14) {
+        const tall = 1 + Math.floor(hash3(x, 43, z) * 2), cid = hash3(x, 47, z) < 0.5 ? B.CORAL_RED : B.CORAL_BLUE;
+        d[lx + lz * CS + (h + 1) * S2] = cid;
+        if (tall > 1 && d[lx + lz * CS + (h + 2) * S2] === B.WATER) d[lx + lz * CS + (h + 2) * S2] = cid;
+      }
+      if ((top === B.GRASS || top === B.MYCEL || top === B.MOSS) && d[lx + lz * CS + h * S2] === top) {
         const r = hash3(x, 7, z) , dens = biome === 'forest' ? 0.22 : 0.3;
         if (r < dens) d[lx + lz * CS + (h + 1) * S2] = r < 0.012 ? B.FLOWER : B.TALLGRASS;
       }
@@ -153,12 +178,12 @@ export class World {
     // trees
     for (let lz = -3; lz < CS + 3; lz++) for (let lx = -3; lx < CS + 3; lx++) {
       const { h, biome } = col(lx, lz);
-      if (h <= SEA || (biome !== 'forest' && biome !== 'plains')) continue;
-      const x = ox + lx, z = oz + lz, r = hash3(x, 13, z);
-      if (r > (biome === 'forest' ? 0.035 : 0.004)) continue;
-      const big = hash3(x, 17, z) > 0.7;
-      const th = 4 + Math.floor(hash3(x, 19, z) * 3) + (big ? 2 : 0);
-      const R = big ? 3.2 : 2.4;
+      if (h <= SEA || (biome !== 'forest' && biome !== 'plains' && biome !== 'jungle')) continue;
+      const x = ox + lx, z = oz + lz, r = hash3(x, 13, z), jungle = biome === 'jungle';
+      if (r > (biome === 'forest' ? 0.035 : jungle ? 0.045 : 0.004)) continue;
+      const big = hash3(x, 17, z) > (jungle ? 0.45 : 0.7);
+      const th = 4 + Math.floor(hash3(x, 19, z) * 3) + (big ? 2 : 0) + (jungle ? 5 : 0);
+      const R = big ? (jungle ? 3.4 : 3.2) : 2.4;
       const cy = h + th;
       for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
         const px = lx + dx, pz = lz + dz, py = cy + dy;
@@ -173,6 +198,26 @@ export class World {
         d[lx + lz * CS + h * S2] = B.DIRT;
       }
       maxY = Math.max(maxY, cy + 4);
+    }
+
+    // the Dragon Isles: islands adrift in the sky, carved out of 3D noise
+    if (realmAt(ox, oz) === 'dragon') {
+      for (let lz = 0; lz < CS; lz++) for (let lx = 0; lx < CS; lx++) {
+        const x = ox + lx, z = oz + lz;
+        const mask = n.s2(x * 0.006, z * 0.006) * 0.35 + n.s2(x * 0.02, z * 0.02) * 0.1;
+        let above = false, depth = 0;
+        for (let y = 112; y >= 52; y--) {
+          const fall = 1 - Math.abs(y - 82) / 30;
+          const dens = n.s3(x * 0.018, y * 0.035, z * 0.018) * 0.7 + mask + fall * 0.45 - 0.55;
+          const i = lx + lz * CS + y * S2;
+          if (dens > 0) {
+            depth = above ? depth + 1 : 0;
+            d[i] = depth === 0 ? B.GRASS : depth < 3 ? B.DIRT : hash3(x, y, z) < 0.015 ? B.CRYSTAL : B.STONE;
+            if (depth === 0 && y + 1 < CH && hash3(x, 49, z) < 0.12) d[lx + lz * CS + (y + 1) * S2] = B.TALLGRASS;
+            above = true; if (y > maxY) maxY = y + 1;
+          } else above = false;
+        }
+      }
     }
 
     // landmarks: obelisks, vaults, geodes, sky islands, the giant glowcap

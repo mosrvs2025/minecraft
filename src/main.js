@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { B, BLOCKS, HOTBAR, TILE, CS, CH, SEA } from './blocks.js';
+import { B, BLOCKS, HOTBAR, PLACEABLE, TILE, CS, CH, SEA } from './blocks.js';
 import { World, chunkKey } from './world.js';
 import { meshChunk } from './mesher.js';
 import { buildAtlas, makeIcon, makeWaterNormal, tileUV } from './textures.js';
@@ -17,6 +17,11 @@ import { Rpg } from './rpg.js';
 import { Discovery } from './discovery.js';
 import { Wonders } from './wonders.js';
 import { sitesNear } from './landmarks.js';
+import { REALMS, realmAt, toLocal } from './realms.js';
+import { Fauna } from './fauna.js';
+import { Vehicles } from './vehicles.js';
+import { Inventory } from './inventory.js';
+import { WEAPONS } from './rpg.js';
 
 const $ = (id) => document.getElementById(id);
 const MOBILE = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -240,9 +245,18 @@ async function start(name, Q) {
   // ---- HUD, hotbar ---------------------------------------------------------------------------
   let sel = 0;
   const hotbar = $('hotbar');
+  const icons = new Map();
+  const iconFor = (id) => { if (!icons.has(id)) icons.set(id, makeIcon(atlas.canvas, id)); return icons.get(id); };
+  try { const saved = JSON.parse(localStorage.getItem('vx-hotbar')); if (Array.isArray(saved) && saved.length === 9 && saved.every((id) => PLACEABLE.includes(id))) saved.forEach((id, i) => { HOTBAR[i] = id; }); } catch { /* ignore */ }
+  function setSlot(i, id) {
+    HOTBAR[i] = id;
+    const slot = hotbar.children[i]; slot.querySelector('img').src = iconFor(id); slot.title = BLOCKS[id].name;
+    try { localStorage.setItem('vx-hotbar', JSON.stringify(HOTBAR)); } catch { /* ignore */ }
+    select(i, false);
+  }
   HOTBAR.forEach((id, i) => {
     const slot = document.createElement('div'); slot.className = 'slot';
-    slot.innerHTML = `<img src="${makeIcon(atlas.canvas, id)}" alt=""><span>${i + 1}</span>`;
+    slot.innerHTML = `<img src="${iconFor(id)}" alt=""><span>${i + 1}</span>`;
     slot.title = BLOCKS[id].name;
     const pick = (e) => { e.preventDefault(); e.stopPropagation(); select(i, false); };
     slot.addEventListener('touchstart', pick, { passive: false }); slot.addEventListener('mousedown', pick);
@@ -303,6 +317,7 @@ async function start(name, Q) {
     if (local) net.send({ t: 'block', x, y, z, b: id });
   }
   function doBreak() {
+    if (vehicles?.riding) return;
     const reach = MOBILE ? 5.5 : 6;
     const mh = mobs.raycast(camera.position, lookDir, reach);
     const blockDist = target ? camera.position.distanceTo(tmpV.set(target.hit[0] + 0.5, target.hit[1] + 0.5, target.hit[2] + 0.5)) - 0.5 : Infinity;
@@ -388,10 +403,10 @@ async function start(name, Q) {
   const sideT = tntTex(TILE.TNT_SIDE), topT = tntTex(TILE.TNT_TOP);
   const tntGeo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
   const tnts = [];
-  function primeTNT(x, y, z, fuse, vel) {
+  function primeTNT(x, y, z, fuse, vel, impact = false) {
     const ms = [sideT, sideT, topT, topT, sideT, sideT].map((map) => new THREE.MeshStandardMaterial({ map, emissive: 0xffffff, emissiveIntensity: 0 }));
     const mesh = new THREE.Mesh(tntGeo, ms); mesh.castShadow = true;
-    const t = { mesh, pos: new THREE.Vector3(x, y, z), vel: vel ?? new THREE.Vector3(0, 4, 0), fuse };
+    const t = { mesh, pos: new THREE.Vector3(x, y, z), vel: vel ?? new THREE.Vector3(0, 4, 0), fuse, impact };
     mesh.position.copy(t.pos).y += 0.49; scene.add(mesh); tnts.push(t);
   }
   function updateTNT(dt) {
@@ -399,7 +414,8 @@ async function start(name, Q) {
       t.fuse -= dt;
       t.vel.y = Math.max(-40, t.vel.y - 26 * dt);
       t.pos.addScaledVector(t.vel, dt);
-      if (world.isSolid(Math.floor(t.pos.x), Math.floor(t.pos.y), Math.floor(t.pos.z))) { t.pos.y = Math.floor(t.pos.y) + 1; t.vel.set(0, 0, 0); }
+      if (world.isSolid(Math.floor(t.pos.x), Math.floor(t.pos.y), Math.floor(t.pos.z))) { if (t.impact) t.fuse = 0; t.pos.y = Math.floor(t.pos.y) + 1; t.vel.set(0, 0, 0); }
+      if (t.impact && t.fuse > 0 && rpg.enemies.some((e) => e.pos.distanceTo(t.pos) < (e.T.radius || 0) + 1.3)) t.fuse = 0;
       t.mesh.position.copy(t.pos).y += 0.49;
       const flash = Math.floor(t.fuse * 5) % 2 === 0 ? 0.9 : 0;
       for (const m of t.mesh.material) m.emissiveIntensity = flash;
@@ -498,6 +514,9 @@ async function start(name, Q) {
       if (code === 'KeyQ') startSlam();
       if (code === 'KeyV') startSense();
       if (code === 'KeyJ') $('journal').hidden ? discovery.openJournal() : discovery.closeJournal();
+      if (code === 'KeyI') inventory.open ? inventory.close() : inventory.show();
+      if (code === 'KeyR') toggleRide();
+      if (code === 'KeyG') fireWeapon();
     },
   });
 
@@ -538,11 +557,81 @@ async function start(name, Q) {
       onBossDefeated: (site) => bossDefeated(site),
       teleport: (x, y, z) => teleport(x, y, z),
       shake: (v) => { shake = Math.max(shake, v); },
+      onWeapon: () => buildHeld(),
       onEchoes: (r) => { $('b-dash').hidden = !r.echo('dash'); $('b-slam').hidden = !r.echo('slam'); $('b-sense').hidden = !r.echo('sense'); },
     },
   });
   const discovery = new Discovery({ world, player, rpg, chat: chatLine, controls, teleport: (x, y, z) => teleport(x, y, z) });
   const wonders = new Wonders({ scene, world, player, rpg, discovery, chat: chatLine, controls, hooks: { beanstalk: (x, y, z) => beanstalk(x, y, z) } });
+  const fauna = new Fauna({ scene, world, player, rpg, chat: chatLine, hooks: {
+    setBlocks: (list) => applyBatch(list, null, true), fx: (x, y, z, r) => explosionFx(x, y, z, r), burn: (d, why) => burn(d, why),
+    shake: (v) => { shake = Math.max(shake, v); } } });
+  const vehicles = new Vehicles({ scene, world, player, rpg, chat: chatLine });
+  const inventory = new Inventory({ rpg, vehicles, controls, hotbar: HOTBAR, getSel: () => sel, setSlot, iconFor, getYaw: () => controls.yaw });
+
+  // ---- held weapon (first person) ----------------------------------------------------------------------------------
+  scene.add(camera);
+  const held = new THREE.Group(); held.position.set(0.42, -0.42, -0.8); camera.add(held);
+  function buildHeld() {
+    held.clear();
+    const W = rpg.weapon, k = rpg.s.weapon;
+    $('b-fire').hidden = !W.ranged;
+    if (k === 'fists') return;
+    const m = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, metalness: 0.3, ...o });
+    const b = (w, h, d, c, x, y, z, o) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m(c, o)); me.position.set(x, y, z); held.add(me); return me; };
+    if (k === 'blaster') { b(0.14, 0.14, 0.6, 0x333333, 0, 0, -0.1); b(0.18, 0.18, 0.12, 0xe63946, 0, 0, -0.42); b(0.08, 0.2, 0.1, 0x222222, 0, -0.14, 0.08); return; }
+    if (k === 'club') { b(0.1, 0.1, 0.5, 0xd8cfb4, 0, 0, 0); b(0.2, 0.2, 0.3, 0xeee6cc, 0, 0, -0.35); return; }
+    b(0.05, 0.05, 0.22, 0x5a3a1a, 0, 0, 0.05);
+    b(0.22, 0.04, 0.05, 0x333333, 0, 0, -0.07);
+    b(0.06, 0.02, 0.6, W.color, 0, 0, -0.4, k === 'dragon' ? { emissive: 0xff3300, emissiveIntensity: 0.8 } : k === 'diamond' ? { emissive: 0x33aaaa, emissiveIntensity: 0.3 } : {});
+    held.rotation.set(-0.5, 0.2, 0);
+  }
+  buildHeld();
+  let fireCd = 0;
+  function fireWeapon() {
+    if (!rpg.weapon.ranged || fireCd > 0 || rpg.inBattle || vehicles.riding || !controls.enabled) return;
+    fireCd = 1.1; swing = 1;
+    const o = camera.position.clone().addScaledVector(lookDir, 1.2);
+    primeTNT(o.x, o.y - 0.5, o.z, 5, lookDir.clone().multiplyScalar(30).add(new THREE.Vector3(0, 2, 0)), true);
+  }
+  function toggleRide() {
+    if (rpg.inBattle || !controls.enabled) return;
+    vehicles.toggleRide();
+    held.visible = !vehicles.riding;
+  }
+
+  // ---- hazards & portals ---------------------------------------------------------------------------------------------
+  let burnT = 0, portalCd = 0, lastRealm = realmAt(player.pos.x, player.pos.z);
+  function burn(dmg, why) {
+    const s = rpg.s; s.hp = Math.max(0, s.hp - dmg);
+    rpg.popText(`🔥 ${dmg}`, player.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), 'hurt'); shake = Math.max(shake, 0.2);
+    if (s.hp <= 0) {
+      const lost = Math.floor(s.coins / 2); s.coins -= lost; s.hp = s.maxHp; s.fp = s.maxFp;
+      chatLine('', `${why || 'Burned!'} You black out… and lose ${lost} coins.`);
+      if (vehicles.riding) vehicles.toggleRide();
+      teleport(...(s.home ?? spawn));
+    }
+    rpg.renderHud();
+  }
+  function usePortal() {
+    if (portalCd > 0) return;
+    portalCd = 3;
+    const p = player.pos, here = realmAt(p.x, p.z);
+    const st = sitesNear(world, 'portal', p.x, p.z, 8)[0];
+    if (!st) return;
+    const dest = st.dest;
+    if (dest === 'primeval' && (rpg.s.items.fossil || 0) < 3) { chatLine('', `🦴 The bone gate rattles but stays shut. It hungers for fossils (${rpg.s.items.fossil || 0}/3). Dig near buried skeletons.`); p.z += 2.5; return; }
+    if (dest === 'dragon' && !rpg.s.crown && rpg.s.lvl < 8) { chatLine('', '🐉 The obsidian gate ignores you. It answers only the crowned — or the strong (Lv 8).'); p.z += 2.5; return; }
+    const R = REALMS[dest === 'over' ? here : dest], sign = dest === 'over' ? -1 : 1;
+    const tx = st.x + sign * R.dx, tz = st.z + sign * R.dz;
+    const other = sitesNear(world, 'portal', tx, tz, 3)[0];
+    const ty = other ? other.y : world.column(tx, tz, true).h;
+    if (vehicles.riding) vehicles.toggleRide();
+    teleport(tx + 0.5, ty + 1.05, tz + 3.5);
+    controls.yaw = 0;
+    explosionFx(tx + 0.5, ty + 3, tz + 0.5, 2);
+  }
+  $('inv-btn').addEventListener('click', () => inventory.show());
 
   function teleport(x, y, z) { player.pos.set(x, y, z); player.vel.set(0, 0, 0); airJumps = 0; slamming = false; dashT = 0; }
 
@@ -591,6 +680,8 @@ async function start(name, Q) {
   tapBtn('b-dash', () => startDash());
   tapBtn('b-slam', () => startSlam());
   tapBtn('b-sense', () => startSense());
+  tapBtn('b-ride', () => toggleRide());
+  tapBtn('b-fire', () => fireWeapon());
 
   // ---- echo movement: hover/glide, shell dash, spore slam, echo sense ------------------------------------------------
   let prevJump = false, airJumps = 0, dashT = 0, dashCd = 0, slamming = false, slamFrom = 0, senseT = 0, senseCd = 0;
@@ -710,6 +801,8 @@ async function start(name, Q) {
     renderer.toneMappingExposure = 0.36 + (1 - day) * 0.2;
 
     fogCol.copy(cNight).lerp(cDay, day).lerp(cSet, sunset * 0.55 * Math.max(day, 0.3));
+    const realmFog = REALMS[realmAt(player.pos.x, player.pos.z)].fog;
+    if (realmFog) fogCol.lerp(tmpC.set(realmFog).multiplyScalar(0.25 + day * 0.75), 0.6);
     const underwater = world.get(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)) === B.WATER;
     if (underwater) { scene.fog.color.copy(cWater).multiplyScalar(0.3 + day * 0.7); scene.fog.near = 0.5; scene.fog.far = 22; }
     else { scene.fog.color.copy(fogCol); scene.fog.near = Q.rd * CS * 0.45; scene.fog.far = Q.rd * CS * 0.98; }
@@ -745,7 +838,16 @@ async function start(name, Q) {
     const fwd = tmpV.set(-Math.sin(c.yaw), 0, -Math.cos(c.yaw));
     const wx = fwd.x * c.move.f + Math.cos(c.yaw) * c.move.r, wz = fwd.z * c.move.f - Math.sin(c.yaw) * c.move.r;
     const wl = Math.hypot(wx, wz), nx = wl > 1 ? wx / wl : wx, nz = wl > 1 ? wz / wl : wz;
-    p.inWater = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.4), Math.floor(p.pos.z)) === B.WATER;
+    const bodyId = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.4), Math.floor(p.pos.z));
+    const footId = world.get(Math.floor(p.pos.x), Math.floor(p.pos.y - 0.1), Math.floor(p.pos.z));
+    const inLava = bodyId === B.LAVA;
+    p.inWater = bodyId === B.WATER || inLava;
+    portalCd -= dt; fireCd -= dt;
+    if (bodyId === B.PORTAL || world.get(Math.floor(p.pos.x), Math.floor(p.pos.y + 1.2), Math.floor(p.pos.z)) === B.PORTAL) usePortal();
+    if ((inLava || (BLOCKS[footId].hot && p.onGround)) && !hacks.state.noclip && !p.fly) {
+      if ((burnT -= dt) <= 0) { burnT = 0.5; burn(inLava ? 4 : 1, inLava ? 'Lava!' : 'The magma scorches your feet.'); }
+      if (inLava) p.vel.y = Math.max(p.vel.y, 1.5);
+    }
     dashCd -= dt; senseCd -= dt;
     if (senseT > 0 && (senseT -= dt) <= 0) endSense();
     const jumpEdge = c.jump && !prevJump; prevJump = c.jump;
@@ -754,7 +856,8 @@ async function start(name, Q) {
     const speed = (p.fly ? (c.sprint ? 22 : 11) : p.inWater ? 3.2 : c.sprint ? 6.4 : 4.4) * (hacks.state.speed ? 3 : 1) * (rpg.star > 0 ? 1.5 : 1);
     const grav = hacks.state.moon ? 6 : 28, jumpV = (hacks.state.jump ? 18 : 8.7) * (rpg.has('spring') ? 1.2 : 1);
     const gliding = glideOk && !p.fly && !p.inWater && !p.onGround && c.jump && p.vel.y < -2.5 && !slamming;
-    const acc = 1 - Math.exp(-dt * (p.onGround || p.fly ? 14 : p.inWater ? 5 : gliding ? 6 : 3.5));
+    const icy = p.onGround && BLOCKS[footId].slippery;
+    const acc = 1 - Math.exp(-dt * (icy ? 1.2 : p.onGround || p.fly ? 14 : p.inWater ? 5 : gliding ? 6 : 3.5));
     p.vel.x += (nx * speed * (gliding ? 1.35 : 1) - p.vel.x) * acc; p.vel.z += (nz * speed * (gliding ? 1.35 : 1) - p.vel.z) * acc;
     if (p.fly) p.vel.y += (((c.jump ? 1 : 0) - (c.down ? 1 : 0)) * speed - p.vel.y) * acc;
     else if (p.inWater) { p.vel.y -= grav * 0.32 * dt; p.vel.y *= 1 - 2.5 * dt; if (c.jump) p.vel.y = Math.min(p.vel.y + 24 * dt, 3.5); }
@@ -816,10 +919,17 @@ async function start(name, Q) {
       camera.position.set(player.pos.x, player.pos.y + EYE, player.pos.z);
     } else {
       streamChunks(player.pos.x, player.pos.z, dt, MOBILE ? 5 : 7);
-      if (!rpg.inBattle) updatePlayer(dt);
+      if (!rpg.inBattle) {
+        if (vehicles.riding) {
+          const seat = vehicles.drive(dt, controls, camera);
+          player.pos.copy(seat); player.vel.set(0, 0, 0);
+        } else updatePlayer(dt);
+      }
+      held.visible = !vehicles.riding && !rpg.inBattle;
+      held.position.y = -0.42 - swing * 0.08; held.rotation.x = (rpg.s.weapon === 'blaster' ? 0 : -0.5) - swing * 1.1;
       camera.getWorldDirection(lookDir);
       target = world.raycast(eye, lookDir, MOBILE ? 5.5 : 6);
-      if (rpg.inBattle) target = null;
+      if (rpg.inBattle || vehicles.riding) target = null;
       highlight.visible = !!target;
       if (target) {
         const [x, y, z] = target.hit;
@@ -840,6 +950,14 @@ async function start(name, Q) {
     if (ready) {
       mobs.update(dt, player.pos, hacks.state.mobs); updateTNT(dt); rpg.update(dt); rpg.update3DHero(dt);
       if (!rpg.inBattle) discovery.update(dt, controls.yaw);
+      fauna.update(dt); vehicles.update(dt);
+      const realm = realmAt(player.pos.x, player.pos.z);
+      vehicles.herds(dt, realm === 'primeval');
+      if (realm !== lastRealm) {
+        lastRealm = realm; const R = REALMS[realm];
+        rpg.banner(realm === 'over' ? 'Home again: the Overworld' : `${R.icon} ${R.name}`, realm === 'over' ? 'The familiar sun. It feels smaller now.' : R.blurb, realm === 'over' ? '🌍' : R.icon);
+        discovery.visitRealm?.(realm);
+      }
       wonders.update(dt, sunDir.y < -0.05);
     }
     updateFx(dt);
@@ -856,5 +974,5 @@ async function start(name, Q) {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-  window.__vx = { renderer, world, player, controls, camera, hacks, mobs, explode, rpg, discovery, wonders, teleport, beanstalk, sites: (t, r = 900) => sitesNear(world, t, player.pos.x, player.pos.z, r), get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
+  window.__vx = { vehicles, fauna, inventory, usePortal, renderer, world, player, controls, camera, hacks, mobs, explode, rpg, discovery, wonders, teleport, beanstalk, sites: (t, r = 900) => sitesNear(world, t, player.pos.x, player.pos.z, r), get time() { return timeOfDay; }, set time(v) { timeOfDay = v; } };
 }

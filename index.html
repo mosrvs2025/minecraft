@@ -37,6 +37,7 @@
     <div id="rpg-hud"></div>
     <div id="compass"></div>
     <button id="journal-btn">📖 <kbd>J</kbd></button>
+    <button id="inv-btn">🎒 <kbd>I</kbd></button>
     <div id="players"></div>
     <button id="hack-btn">⚡ Hacks <kbd>H</kbd></button>
     <div id="active-hacks"></div>
@@ -44,7 +45,7 @@
     <input id="chatin" maxlength="200" placeholder="Say something…" hidden />
     <div id="blockname"></div>
     <div id="hotbar"></div>
-    <div id="hint">Click to play · <b>WASD</b> move · <b>Space</b> jump (double = fly) · <b>Shift</b> sprint · <b>C</b> descend · <b>LMB/RMB</b> break/place · <b>T</b> chat · <b>H</b> hacks · <b>J</b> journal · Echoes: <b>E</b> dash · <b>Q</b> slam · <b>V</b> sense</div>
+    <div id="hint">Click to play · <b>WASD</b> move · <b>Space</b> jump (double = fly) · <b>Shift</b> sprint · <b>C</b> descend · <b>LMB/RMB</b> break/place · <b>T</b> chat · <b>H</b> hacks · <b>J</b> journal · Echoes: <b>E</b> dash · <b>Q</b> slam · <b>V</b> sense · <b>I</b> inventory · <b>R</b> ride · <b>G</b> fire</div>
   </div>
 
   <div id="battle" hidden>
@@ -58,6 +59,7 @@
   <div id="banner" hidden></div>
   <div id="journal" hidden></div>
   <div id="shop" hidden></div>
+  <div id="inv" hidden></div>
 
   <div id="hacks" hidden></div>
 
@@ -67,6 +69,8 @@
       <button id="b-chat" class="tb small">💬</button>
       <button id="b-fly" class="tb small">✈️</button>
       <button id="b-sense" class="tb small" hidden>👁</button>
+      <button id="b-ride" class="tb small">🚗</button>
+      <button id="b-fire" class="tb small" hidden>🎯</button>
       <button id="b-dash" class="tb" hidden>💨</button>
       <button id="b-slam" class="tb" hidden>💥</button>
       <button id="b-break" class="tb">⛏</button>

@@ -14,7 +14,7 @@ const FACES = [
   { n: [0, 0, 1], c: [[0, 0, 1, 0, 0], [1, 0, 1, 1, 0], [0, 1, 1, 0, 1], [1, 1, 1, 1, 1]] },
 ];
 const AO_CURVE = [0.38, 0.58, 0.8, 1];
-const UVS = Array.from({ length: 40 }, (_, t) => tileUV(t));
+const UVS = Array.from({ length: 60 }, (_, t) => tileUV(t));
 
 class Buf {
   constructor() { this.pos = []; this.nor = []; this.uv = []; this.col = []; this.wind = []; this.glow = []; this.idx = []; this.n = 0; }
@@ -60,7 +60,7 @@ export function meshChunk(world, chunk) {
         const { n, c } = FACES[f];
         const nb = get(x + n[0], y + n[1], z + n[2]);
         const nbb = BLOCKS[nb];
-        if ((nbb.opaque && shown(nb)) || (nb === id && id === B.GLASS)) continue;
+        if ((nbb.opaque && shown(nb)) || (nb === id && (id === B.GLASS || b.liquid))) continue;
         const [u0, v0, u1, v1] = UVS[b.tiles[f === 3 ? 0 : f === 2 ? 1 : 2]];
         const ax = n[0] ? 0 : n[1] ? 1 : 2, a1 = ax === 0 ? 1 : 0, a2 = ax === 2 ? 1 : 2;
         const ao = [];
@@ -102,7 +102,7 @@ export function meshChunk(world, chunk) {
       for (let f = 0; f < 6; f++) {
         const { n, c } = FACES[f];
         const nb = get(x + n[0], y + n[1], z + n[2]);
-        if (nb === B.WATER || BLOCKS[nb].opaque) continue;
+        if (nb === B.WATER || nb === B.CORAL_RED || nb === B.CORAL_BLUE || BLOCKS[nb].opaque) continue; // coral counts as waterlogged
         const base = water.n;
         for (const cr of c) {
           const wy = y + (cr[1] ? top : 0), wx = ox + x + cr[0], wz = oz + z + cr[2];
